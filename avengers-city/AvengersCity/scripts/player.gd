@@ -2,6 +2,7 @@ extends CharacterBody3D
 # Spielfigur: laufen, sprinten, springen, Heldenwechsel. Die Figuren bestehen aus einfachen Formen.
 
 const U = preload("res://scripts/util.gd")
+const HeroModel = preload("res://scripts/hero_model.gd")
 
 var HEROES := [
 	{"name": "Captain America", "suit": Color(0.10, 0.26, 0.72), "accent": Color(0.80, 0.10, 0.14), "trim": Color(0.95, 0.95, 0.95), "scale": 1.0},
@@ -102,41 +103,10 @@ func build_model() -> void:
 		model.add_child(real)
 		return
 
-	var suit := U.mat(h["suit"], 0.5, 0.1)
+	var parts := HeroModel.build(hero, h, model, legs, arms)
 	var accent := U.mat(h["accent"], 0.4, 0.3)
 	var trim := U.mat(h["trim"], 0.25, 0.7)
-
-	var hips := Node3D.new()
-	hips.position = Vector3(0, 1.0, 0)
-	model.add_child(hips)
-	for s in [-1.0, 1.0]:
-		var lp := Node3D.new()
-		lp.position = Vector3(s * 0.2, 0.0, 0.0)
-		hips.add_child(lp)
-		U.box(lp, Vector3(0.26, 0.9, 0.28), Vector3(0, -0.45, 0), suit)
-		U.box(lp, Vector3(0.3, 0.16, 0.36), Vector3(0, -0.94, -0.04), accent)
-		legs.append(lp)
-
-	var torso := Node3D.new()
-	torso.position = Vector3(0, 1.5, 0)
-	model.add_child(torso)
-	U.box(torso, Vector3(0.72, 0.8, 0.42), Vector3(0, 0.15, 0), suit)
-	U.box(torso, Vector3(0.74, 0.12, 0.44), Vector3(0, -0.22, 0), trim)
-	for s in [-1.0, 1.0]:
-		var ap := Node3D.new()
-		ap.position = Vector3(s * 0.52, 0.42, 0)
-		torso.add_child(ap)
-		U.box(ap, Vector3(0.22, 0.72, 0.22), Vector3(0, -0.34, 0), suit)
-		U.sphere(ap, 0.13, Vector3(0, -0.74, 0), accent)
-		arms.append(ap)
-
-	var head := Node3D.new()
-	head.position = Vector3(0, 0.98, 0)
-	torso.add_child(head)
-	U.sphere(head, 0.27, Vector3(0, 0.06, 0), suit)
-	U.box(head, Vector3(0.36, 0.08, 0.05), Vector3(0, 0.02, -0.24), accent)
-
-	# Heldenspezifische Details
+	var suit := U.mat(h["suit"], 0.5, 0.1)
 	if hero == 0:
 		# Schild am linken Arm: rot, weiss, blau
 		arm_shield = Node3D.new()
@@ -145,15 +115,6 @@ func build_model() -> void:
 		U.cyl(arm_shield, 0.36, 0.05, Vector3(-0.05, -0.5, -0.2), accent, Vector3(90, 0, 0))
 		U.cyl(arm_shield, 0.27, 0.06, Vector3(-0.05, -0.5, -0.22), trim, Vector3(90, 0, 0))
 		U.cyl(arm_shield, 0.17, 0.07, Vector3(-0.05, -0.5, -0.24), suit, Vector3(90, 0, 0))
-	elif hero == 1:
-		# Arc-Reaktor und Glas-Augen
-		U.sphere(torso, 0.12, Vector3(0, 0.22, -0.22), U.glow(Color(0.5, 0.9, 1.0), 3.0))
-		U.box(head, Vector3(0.2, 0.03, 0.04), Vector3(0, 0.03, -0.26), U.glow(Color(0.6, 0.95, 1.0), 2.0))
-	elif hero == 2:
-		# Hammer in der rechten Hand, roter Umhang
-		U.cyl(arms[1], 0.035, 0.6, Vector3(0, -0.75, -0.05), U.mat(Color(0.35, 0.22, 0.12), 0.8))
-		U.box(arms[1], Vector3(0.2, 0.2, 0.3), Vector3(0, -1.1, -0.05), trim)
-		U.box(torso, Vector3(0.7, 1.2, 0.04), Vector3(0, 0.1, 0.24), U.mat(Color(0.7, 0.08, 0.08), 0.7))
 
 
 func face_camera() -> void:

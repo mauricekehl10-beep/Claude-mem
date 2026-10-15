@@ -48,6 +48,7 @@ func setup_input() -> void:
 		"sprint": [KEY_SHIFT],
 		"interact": [KEY_G],
 		"switch_hero": [KEY_TAB],
+		"descend": [KEY_CTRL, KEY_C],
 	}
 	for act in actions:
 		if not InputMap.has_action(act):
@@ -319,7 +320,7 @@ func build_hud() -> void:
 	layer.add_child(prompt)
 	help = Label.new()
 	help.position = Vector2(18, 670)
-	help.text = "WASD laufen · Maus umsehen · Shift sprinten · Leertaste springen · Tab Held wechseln · G ins Auto · ESC Maus frei\nCaptain: Linksklick schlagen · Rechtsklick Schild werfen   |   Iron Man: Leertaste in der Luft halten = fliegen"
+	help.text = "WASD laufen · Maus umsehen · Shift sprinten · Leertaste springen · Tab Held wechseln · G ins Auto · ESC Maus frei\nCaptain: Linksklick schlagen · Rechtsklick Schild werfen   |   Iron Man: in der Luft Leertaste halten = fliegen · Linksklick schießen · Strg sinken (oder Leertaste loslassen = landen)"
 	layer.add_child(help)
 
 

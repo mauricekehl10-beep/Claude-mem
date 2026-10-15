@@ -33,6 +33,10 @@ var shield_state := 0  # 0 = am Arm, 1 = fliegt weg, 2 = kommt zurück
 var shield_t := 0.0
 var shield_dir := Vector3.ZERO
 var shield_hit: Array = []
+var shots: Array = []
+var shoot_cd := 0.0
+var fly_lock := false
+var flying := false
 
 
 func _ready() -> void:
@@ -151,6 +155,38 @@ func build_model() -> void:
 		U.box(torso, Vector3(0.7, 1.2, 0.04), Vector3(0, 0.1, 0.24), U.mat(Color(0.7, 0.08, 0.08), 0.7))
 
 
+func shoot() -> void:
+	shoot_cd = 0.25
+	punch_t = 0.15
+	var dir: Vector3 = -cam.global_transform.basis.z
+	var b := U.sphere(self, 0.14, Vector3.ZERO, U.glow(Color(0.6, 0.95, 1.0), 4.0))
+	b.reparent(get_parent())
+	b.global_position = global_position + Vector3(0, 1.5, 0) + dir * 1.0
+	shots.append({"node": b, "dir": dir, "t": 0.0})
+
+
+func update_shots(delta: float) -> void:
+	var space := get_world_3d().direct_space_state
+	for s in shots.duplicate():
+		var b: Node3D = s["node"]
+		var from := b.global_position
+		var to: Vector3 = from + s["dir"] * 45.0 * delta
+		s["t"] += delta
+		var q := PhysicsRayQueryParameters3D.create(from, to)
+		q.exclude = [get_rid()]
+		var r := space.intersect_ray(q)
+		if r:
+			if r["collider"].is_in_group("enemies"):
+				r["collider"].hit(12.0, from)
+			b.queue_free()
+			shots.erase(s)
+		elif s["t"] > 2.0:
+			b.queue_free()
+			shots.erase(s)
+		else:
+			b.global_position = to
+
+
 func facing() -> Vector3:
 	return -model.global_transform.basis.z
 
@@ -243,13 +279,24 @@ func _physics_process(delta: float) -> void:
 			throw_shield()
 	if shield_state != 0:
 		update_shield(delta)
+	shoot_cd = maxf(shoot_cd - delta, 0.0)
+	if hero == 1 and Input.is_action_pressed("attack") and shoot_cd <= 0.0 and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+		shoot()
+	if not shots.is_empty():
+		update_shots(delta)
 
-	# Iron Man: Leertaste in der Luft = schweben, WASD fliegt in Blickrichtung
-	if hero == 1 and not is_on_floor() and Input.is_action_pressed("jump"):
+	# Iron Man: Leertaste in der Luft = schweben, WASD fliegt in Blickrichtung.
+	# Nach der Landung (Boden, Dach) muss die Leertaste erst losgelassen werden.
+	if is_on_floor() or not Input.is_action_pressed("jump"):
+		fly_lock = is_on_floor() and Input.is_action_pressed("jump")
+	flying = hero == 1 and not is_on_floor() and not fly_lock and Input.is_action_pressed("jump")
+	if flying:
 		var fi := Input.get_vector("move_left", "move_right", "move_forward", "move_back")
 		var fdir: Vector3 = cam.global_transform.basis * Vector3(fi.x, 0.0, fi.y)
 		var fspd := 24.0 if Input.is_action_pressed("sprint") else 14.0
 		var want := fdir.normalized() * fspd if fi.length() > 0.05 else Vector3.ZERO
+		if Input.is_action_pressed("descend"):
+			want.y = -8.0
 		velocity = velocity.move_toward(want, 50.0 * delta)
 		if fi.length() > 0.05:
 			model.rotation.y = lerp_angle(model.rotation.y, atan2(-fdir.x, -fdir.z), clamp(12.0 * delta, 0.0, 1.0))
@@ -279,7 +326,24 @@ func _physics_process(delta: float) -> void:
 
 
 func animate(delta: float) -> void:
+	# Flugpose: nach vorne gelehnt, Arme nach vorn, Beine gestreckt
+	var lean := 0.0
+	if flying:
+		lean = -1.2 * clampf(velocity.length() / 14.0, 0.0, 1.0)
+	model.rotation.x = lerpf(model.rotation.x, lean, clampf(8.0 * delta, 0.0, 1.0))
+	# Drehpunkt in Hüfthöhe statt an den Füßen
+	var c := Vector3(0, 1.0, 0)
+	model.position = Basis(Vector3.UP, model.rotation.y) * (c - Basis(Vector3.RIGHT, model.rotation.x) * c)
 	if legs.is_empty():
+		return
+	if flying:
+		legs[0].rotation.x = 0.15
+		legs[1].rotation.x = 0.15
+		var arm_up := -3.0 if lean < -0.3 else -0.35
+		arms[0].rotation.x = arm_up
+		arms[1].rotation.x = arm_up
+		if punch_t > 0.0:
+			arms[1].rotation.x = -1.6
 		return
 	var sp := Vector2(velocity.x, velocity.z).length()
 	var k: float = clamp(sp / 6.0, 0.0, 1.0) if is_on_floor() else 0.0

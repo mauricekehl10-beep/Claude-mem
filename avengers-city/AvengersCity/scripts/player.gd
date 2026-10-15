@@ -3,6 +3,7 @@ extends CharacterBody3D
 
 const U = preload("res://scripts/util.gd")
 const HeroModel = preload("res://scripts/hero_model.gd")
+const MixamoModel = preload("res://scripts/mixamo_model.gd")
 
 var HEROES := [
 	{"name": "Captain America", "suit": Color(0.10, 0.26, 0.72), "accent": Color(0.80, 0.10, 0.14), "trim": Color(0.95, 0.95, 0.95), "scale": 1.0},
@@ -11,6 +12,7 @@ var HEROES := [
 ]
 
 const USE_REAL_BODY := false
+const USE_MIXAMO := true
 
 var hero := 0
 var active := true
@@ -39,6 +41,9 @@ var shoot_cd := 0.0
 var bolt_cd := 0.0
 var fly_lock := false
 var flying := false
+var mx: Dictionary = {}
+var mx_anim: AnimationPlayer
+var mx_cur := ""
 
 
 func _ready() -> void:
@@ -90,6 +95,9 @@ func build_model() -> void:
 	model.scale = Vector3.ONE * float(h["scale"])
 	legs.clear()
 	arms.clear()
+	mx = {}
+	mx_anim = null
+	mx_cur = ""
 
 	# Captain America nutzt das geladene Modell, wenn es vorhanden ist.
 	# Das Quaternius-Modell ist nackt (ohne Anzug). Bis es einen Anzug gibt, bleibt die Würfel-Figur.
@@ -103,6 +111,10 @@ func build_model() -> void:
 		model.add_child(real)
 		return
 
+	if USE_MIXAMO and MixamoModel.available():
+		build_mixamo(h)
+		return
+
 	var parts := HeroModel.build(hero, h, model, legs, arms)
 	var accent := U.mat(h["accent"], 0.4, 0.3)
 	var trim := U.mat(h["trim"], 0.25, 0.7)
@@ -112,12 +124,13 @@ func build_model() -> void:
 		arm_shield = Node3D.new()
 		arms[0].add_child(arm_shield)
 		arm_shield.visible = shield_state == 0
-		U.cyl(arm_shield, 0.36, 0.05, Vector3(-0.05, -0.5, -0.2), accent, Vector3(90, 0, 0))
+		U.cyl(arm_shield, 0.3, 0.05, Vector3(-0.05, -0.5, -0.2), accent, Vector3(90, 0, 0))
 		U.cyl(arm_shield, 0.27, 0.06, Vector3(-0.05, -0.5, -0.22), trim, Vector3(90, 0, 0))
 		U.cyl(arm_shield, 0.17, 0.07, Vector3(-0.05, -0.5, -0.24), suit, Vector3(90, 0, 0))
 
 
 func face_camera() -> void:
+	mx_cur = ""
 	var look: Vector3 = -yaw_pivot.global_transform.basis.z
 	model.rotation.y = atan2(-look.x, -look.z)
 
@@ -125,7 +138,7 @@ func face_camera() -> void:
 func shoot() -> void:
 	face_camera()
 	shoot_cd = 0.25
-	punch_t = 0.15
+	punch_t = 0.35
 	# Zielpunkt aus der Bildmitte (Fadenkreuz), Schuss startet an der Brust
 	var cam_fwd: Vector3 = -cam.global_transform.basis.z
 	var origin := global_position + Vector3(0, 1.5, 0)
@@ -181,7 +194,7 @@ func respawn() -> void:
 func do_punch(dmg: float = 15.0, reach: float = 2.4) -> void:
 	face_camera()
 	punch_cd = 0.4
-	punch_t = 0.2
+	punch_t = 0.45
 	for e in get_tree().get_nodes_in_group("enemies"):
 		var to: Vector3 = e.global_position - global_position
 		to.y = 0.0
@@ -342,6 +355,9 @@ func animate(delta: float) -> void:
 	# Drehpunkt in Hüfthöhe statt an den Füßen
 	var c := Vector3(0, 1.0, 0)
 	model.position = Basis(Vector3.UP, model.rotation.y) * (c - Basis(Vector3.RIGHT, model.rotation.x) * c)
+	if mx_anim:
+		animate_mx()
+		return
 	if legs.is_empty():
 		return
 	if flying:
@@ -374,3 +390,44 @@ func animate(delta: float) -> void:
 		arms[1].rotation.x = -2.2
 	if punch_t > 0.0:
 		arms[1].rotation.x = 1.6
+
+
+# Mixamo-Figur: Körper, Schild und Hammer. Die Animationen steuert animate_mx().
+func build_mixamo(h: Dictionary) -> void:
+	mx = MixamoModel.build(hero, h, model)
+	mx_anim = mx["anim"]
+	mx_anim.play("h/idle")
+	mx_cur = "idle"
+	var accent := U.mat(h["accent"], 0.4, 0.3)
+	var trim := U.mat(h["trim"], 0.25, 0.7)
+	var suit := U.mat(h["suit"], 0.5, 0.1)
+	if hero == 0:
+		arm_shield = Node3D.new()
+		mx["lhand"].add_child(arm_shield)
+		arm_shield.visible = shield_state == 0
+		U.cyl(arm_shield, 0.3, 0.05, Vector3(0, 0, 0), accent, Vector3(0, 0, 90))
+		U.cyl(arm_shield, 0.22, 0.06, Vector3(0, 0.01, 0), trim, Vector3(0, 0, 90))
+		U.cyl(arm_shield, 0.13, 0.07, Vector3(0, 0.02, 0), suit, Vector3(0, 0, 90))
+
+
+func animate_mx() -> void:
+	var want := "idle"
+	var spd := 1.0
+	var sp := Vector2(velocity.x, velocity.z).length()
+	if flying:
+		want = "fly" if sp > 3.0 else "float"
+	elif punch_t > 0.0:
+		want = "hammer" if hero == 2 else "punch"
+		spd = 2.2
+	elif not is_on_floor():
+		want = "jump"
+		spd = 1.4
+	elif sp > 7.5:
+		want = "run"
+	elif sp > 0.5:
+		want = "walk"
+		spd = 1.2
+	if mx_cur != want:
+		mx_cur = want
+		mx_anim.play("h/" + want, 0.15)
+	mx_anim.speed_scale = spd

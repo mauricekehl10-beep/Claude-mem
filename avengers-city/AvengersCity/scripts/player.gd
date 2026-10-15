@@ -126,10 +126,17 @@ func shoot() -> void:
 	face_camera()
 	shoot_cd = 0.25
 	punch_t = 0.15
-	var dir: Vector3 = -cam.global_transform.basis.z
+	# Zielpunkt aus der Bildmitte (Fadenkreuz), Schuss startet an der Brust
+	var cam_fwd: Vector3 = -cam.global_transform.basis.z
+	var origin := global_position + Vector3(0, 1.5, 0)
+	var q := PhysicsRayQueryParameters3D.create(cam.global_position, cam.global_position + cam_fwd * 200.0)
+	q.exclude = [get_rid()]
+	var hit := get_world_3d().direct_space_state.intersect_ray(q)
+	var target: Vector3 = hit["position"] if hit else cam.global_position + cam_fwd * 200.0
+	var dir := (target - origin).normalized()
 	var b := U.sphere(self, 0.14, Vector3.ZERO, U.glow(Color(0.6, 0.95, 1.0), 4.0))
 	b.reparent(get_parent())
-	b.global_position = global_position + Vector3(0, 1.5, 0) + dir * 1.0
+	b.global_position = origin + dir * 1.0
 	shots.append({"node": b, "dir": dir, "t": 0.0})
 
 

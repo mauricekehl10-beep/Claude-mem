@@ -17,6 +17,7 @@ var in_car := false
 var hud: Label
 var prompt: Label
 var help: Label
+var crosshair: Control
 
 
 func _ready() -> void:
@@ -363,6 +364,22 @@ func build_hud() -> void:
 	prompt.position = Vector2(520, 560)
 	prompt.add_theme_font_size_override("font_size", 26)
 	layer.add_child(prompt)
+	crosshair = Control.new()
+	crosshair.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layer.add_child(crosshair)
+	for r in [Rect2(-14, -1, 9, 2), Rect2(5, -1, 9, 2), Rect2(-1, -14, 2, 9), Rect2(-1, 5, 2, 9), Rect2(-1.5, -1.5, 3, 3)]:
+		var shadow := ColorRect.new()
+		shadow.position = r.position - Vector2(1, 1)
+		shadow.size = r.size + Vector2(2, 2)
+		shadow.color = Color(0, 0, 0, 0.6)
+		shadow.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		crosshair.add_child(shadow)
+		var bar := ColorRect.new()
+		bar.position = r.position
+		bar.size = r.size
+		bar.color = Color(1, 1, 1, 0.9)
+		bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		crosshair.add_child(bar)
 	help = Label.new()
 	help.position = Vector2(18, 670)
 	help.text = "WASD laufen · Maus umsehen · Shift sprinten · Leertaste springen · Tab Held wechseln · G ins Auto · ESC Maus frei\nCaptain: Linksklick schlagen · Rechtsklick Schild werfen   |   Iron Man: in der Luft Leertaste halten = fliegen · Linksklick schießen · Strg sinken (oder Leertaste loslassen = landen)   |   Thor: Linksklick Hammer · Rechtsklick Blitz"
@@ -378,6 +395,8 @@ func _process(_delta: float) -> void:
 			enter_car()
 	if Input.is_action_just_pressed("switch_hero") and not in_car:
 		player.next_hero()
+	crosshair.visible = not in_car
+	crosshair.position = (get_viewport().get_visible_rect().size * 0.5).floor()
 	prompt.text = "G: Einsteigen" if near else ""
 	if in_car:
 		hud.text = "Auto · %d km/h" % int(abs(vehicle.speed) * 3.6)

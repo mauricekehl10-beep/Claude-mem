@@ -9,6 +9,8 @@ var HEROES := [
 	{"name": "Thor", "suit": Color(0.26, 0.28, 0.34), "accent": Color(0.55, 0.38, 0.20), "trim": Color(0.72, 0.74, 0.80), "scale": 1.10},
 ]
 
+const USE_REAL_BODY := false
+
 var hero := 0
 var active := true
 var model: Node3D
@@ -72,7 +74,8 @@ func build_model() -> void:
 	arms.clear()
 
 	# Captain America nutzt das geladene Modell, wenn es vorhanden ist.
-	var real: Node3D = U.load_model("Superhero_Male_FullBody.gltf") if hero == 0 else null
+	# Das Quaternius-Modell ist nackt (ohne Anzug). Bis es einen Anzug gibt, bleibt die Würfel-Figur.
+	var real: Node3D = U.load_model("Superhero_Male_FullBody.gltf") if (hero == 0 and USE_REAL_BODY) else null
 	if real:
 		var box := U.model_aabb(real)
 		var s := 1.85 / maxf(box.size.y, 0.01)

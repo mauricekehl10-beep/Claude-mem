@@ -35,6 +35,7 @@ var shield_dir := Vector3.ZERO
 var shield_hit: Array = []
 var shots: Array = []
 var shoot_cd := 0.0
+var bolt_cd := 0.0
 var fly_lock := false
 var flying := false
 
@@ -203,14 +204,38 @@ func respawn() -> void:
 	velocity = Vector3.ZERO
 
 
-func do_punch() -> void:
+func do_punch(dmg: float = 15.0, reach: float = 2.4) -> void:
 	punch_cd = 0.4
 	punch_t = 0.2
 	for e in get_tree().get_nodes_in_group("enemies"):
 		var to: Vector3 = e.global_position - global_position
 		to.y = 0.0
-		if to.length() < 2.4 and to.normalized().dot(facing()) > 0.3:
-			e.hit(15.0, global_position)
+		if to.length() < reach and to.normalized().dot(facing()) > 0.3:
+			e.hit(dmg, global_position)
+
+
+# Thor: Blitz auf den Gegner, der am besten im Blickfeld liegt (oder auf einen Punkt vor ihm)
+func lightning() -> void:
+	bolt_cd = 1.5
+	var look: Vector3 = -cam.global_transform.basis.z
+	look.y = 0.0
+	look = look.normalized()
+	var best: Node3D = null
+	var best_dot := 0.6
+	for e in get_tree().get_nodes_in_group("enemies"):
+		var to: Vector3 = e.global_position - global_position
+		to.y = 0.0
+		if to.length() < 35.0 and to.normalized().dot(look) > best_dot:
+			best_dot = to.normalized().dot(look)
+			best = e
+	var spot: Vector3 = best.global_position if best else global_position + look * 12.0
+	for e in get_tree().get_nodes_in_group("enemies"):
+		if e.global_position.distance_to(spot) < 3.5:
+			e.hit(35.0, spot)
+	var b := U.cyl(self, 0.18, 40.0, Vector3.ZERO, U.glow(Color(0.7, 0.85, 1.0), 6.0))
+	b.reparent(get_parent())
+	b.global_position = spot + Vector3(0, 20, 0)
+	get_tree().create_timer(0.25).timeout.connect(b.queue_free)
 
 
 func throw_shield() -> void:
@@ -277,6 +302,12 @@ func _physics_process(delta: float) -> void:
 			do_punch()
 		if Input.is_action_just_pressed("throw") and shield_state == 0:
 			throw_shield()
+	if hero == 2:
+		bolt_cd = maxf(bolt_cd - delta, 0.0)
+		if Input.is_action_just_pressed("attack") and punch_cd <= 0.0:
+			do_punch(20.0, 3.2)
+		if Input.is_action_just_pressed("throw") and bolt_cd <= 0.0:
+			lightning()
 	if shield_state != 0:
 		update_shield(delta)
 	shoot_cd = maxf(shoot_cd - delta, 0.0)

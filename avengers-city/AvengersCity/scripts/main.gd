@@ -198,19 +198,33 @@ func add_building(cx: float, cz: float, fw: float, fd: float, h: float, tex: Tex
 		model.scale = Vector3.ONE * s
 		model.position = Vector3(-box.get_center().x * s, -box.position.y * s, -box.get_center().z * s)
 		body.add_child(model)
+		# Kollision aus dem Modell selbst, damit sie zur sichtbaren Form (und Dachhöhe) passt
+		add_mesh_collision(model, body, Transform3D(Basis.from_scale(Vector3.ONE * s), model.position))
 	else:
 		U.box(body, Vector3(fw, h, fd), Vector3(0, h * 0.5, 0), m)
-	var col := CollisionShape3D.new()
-	var bs := BoxShape3D.new()
-	bs.size = Vector3(fw, h, fd)
-	col.shape = bs
-	col.position = Vector3(0, h * 0.5, 0)
-	body.add_child(col)
+		var col := CollisionShape3D.new()
+		var bs := BoxShape3D.new()
+		bs.size = Vector3(fw, h, fd)
+		col.shape = bs
+		col.position = Vector3(0, h * 0.5, 0)
+		body.add_child(col)
 	if not model:
 		if randf() < 0.5:
 			U.box(body, Vector3(fw * 0.4, 4.0, fd * 0.4), Vector3(0, h + 2.0, 0), U.mat(Color(0.25, 0.27, 0.32), 0.7, 0.2))
 		if h > 40.0:
 			U.cyl(body, 0.12, 8.0, Vector3(0, h + 4.0, 0), U.glow(Color(1, 0.2, 0.2), 3.0))
+
+
+func add_mesh_collision(node: Node3D, body: StaticBody3D, xform: Transform3D) -> void:
+	var mi := node as MeshInstance3D
+	if mi and mi.mesh:
+		var cs := CollisionShape3D.new()
+		cs.shape = mi.mesh.create_trimesh_shape()
+		cs.transform = xform
+		body.add_child(cs)
+	for c in node.get_children():
+		if c is Node3D:
+			add_mesh_collision(c, body, xform * (c as Node3D).transform)
 
 
 func build_park(cx: float, cz: float) -> void:
@@ -320,7 +334,7 @@ func build_hud() -> void:
 	layer.add_child(prompt)
 	help = Label.new()
 	help.position = Vector2(18, 670)
-	help.text = "WASD laufen · Maus umsehen · Shift sprinten · Leertaste springen · Tab Held wechseln · G ins Auto · ESC Maus frei\nCaptain: Linksklick schlagen · Rechtsklick Schild werfen   |   Iron Man: in der Luft Leertaste halten = fliegen · Linksklick schießen · Strg sinken (oder Leertaste loslassen = landen)"
+	help.text = "WASD laufen · Maus umsehen · Shift sprinten · Leertaste springen · Tab Held wechseln · G ins Auto · ESC Maus frei\nCaptain: Linksklick schlagen · Rechtsklick Schild werfen   |   Iron Man: in der Luft Leertaste halten = fliegen · Linksklick schießen · Strg sinken (oder Leertaste loslassen = landen)   |   Thor: Linksklick Hammer · Rechtsklick Blitz"
 	layer.add_child(help)
 
 

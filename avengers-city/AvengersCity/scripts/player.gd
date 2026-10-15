@@ -23,9 +23,21 @@ var yaw_pivot: Node3D
 var pitch_pivot: Node3D
 var cam: Camera3D
 var col: CollisionShape3D
+var start_pos := Vector3.ZERO
+var hits := 0
+var punch_cd := 0.0
+var punch_t := 0.0
+var arm_shield: Node3D
+var shield: Node3D
+var shield_state := 0  # 0 = am Arm, 1 = fliegt weg, 2 = kommt zurück
+var shield_t := 0.0
+var shield_dir := Vector3.ZERO
+var shield_hit: Array = []
 
 
 func _ready() -> void:
+	add_to_group("player")
+	start_pos = global_position
 	col = CollisionShape3D.new()
 	var cap := CapsuleShape3D.new()
 	cap.radius = 0.4
@@ -122,9 +134,12 @@ func build_model() -> void:
 	# Heldenspezifische Details
 	if hero == 0:
 		# Schild am linken Arm: rot, weiss, blau
-		U.cyl(arms[0], 0.36, 0.05, Vector3(-0.05, -0.5, -0.2), accent, Vector3(90, 0, 0))
-		U.cyl(arms[0], 0.27, 0.06, Vector3(-0.05, -0.5, -0.22), trim, Vector3(90, 0, 0))
-		U.cyl(arms[0], 0.17, 0.07, Vector3(-0.05, -0.5, -0.24), suit, Vector3(90, 0, 0))
+		arm_shield = Node3D.new()
+		arms[0].add_child(arm_shield)
+		arm_shield.visible = shield_state == 0
+		U.cyl(arm_shield, 0.36, 0.05, Vector3(-0.05, -0.5, -0.2), accent, Vector3(90, 0, 0))
+		U.cyl(arm_shield, 0.27, 0.06, Vector3(-0.05, -0.5, -0.22), trim, Vector3(90, 0, 0))
+		U.cyl(arm_shield, 0.17, 0.07, Vector3(-0.05, -0.5, -0.24), suit, Vector3(90, 0, 0))
 	elif hero == 1:
 		# Arc-Reaktor und Glas-Augen
 		U.sphere(torso, 0.12, Vector3(0, 0.22, -0.22), U.glow(Color(0.5, 0.9, 1.0), 3.0))
@@ -134,6 +149,75 @@ func build_model() -> void:
 		U.cyl(arms[1], 0.035, 0.6, Vector3(0, -0.75, -0.05), U.mat(Color(0.35, 0.22, 0.12), 0.8))
 		U.box(arms[1], Vector3(0.2, 0.2, 0.3), Vector3(0, -1.1, -0.05), trim)
 		U.box(torso, Vector3(0.7, 1.2, 0.04), Vector3(0, 0.1, 0.24), U.mat(Color(0.7, 0.08, 0.08), 0.7))
+
+
+func facing() -> Vector3:
+	return -model.global_transform.basis.z
+
+
+func hurt() -> void:
+	hits += 1
+	if hits >= 5:
+		respawn()
+
+
+func respawn() -> void:
+	hits = 0
+	global_position = start_pos
+	velocity = Vector3.ZERO
+
+
+func do_punch() -> void:
+	punch_cd = 0.4
+	punch_t = 0.2
+	for e in get_tree().get_nodes_in_group("enemies"):
+		var to: Vector3 = e.global_position - global_position
+		to.y = 0.0
+		if to.length() < 2.4 and to.normalized().dot(facing()) > 0.3:
+			e.hit(15.0, global_position)
+
+
+func throw_shield() -> void:
+	shield_state = 1
+	shield_t = 0.0
+	shield_hit.clear()
+	shield_dir = -yaw_pivot.global_transform.basis.z
+	shield_dir.y = 0.0
+	shield_dir = shield_dir.normalized()
+	if arm_shield:
+		arm_shield.visible = false
+	shield = Node3D.new()
+	U.cyl(shield, 0.36, 0.05, Vector3.ZERO, U.mat(Color(0.8, 0.1, 0.14), 0.4, 0.3))
+	U.cyl(shield, 0.27, 0.06, Vector3(0, 0.005, 0), U.mat(Color(0.95, 0.95, 0.95), 0.25, 0.7))
+	U.cyl(shield, 0.17, 0.07, Vector3(0, 0.01, 0), U.mat(Color(0.1, 0.26, 0.72), 0.5, 0.1))
+	get_parent().add_child(shield)
+	shield.global_position = global_position + Vector3(0, 1.3, 0) + shield_dir
+
+
+func update_shield(delta: float) -> void:
+	shield_t += delta
+	var chest := global_position + Vector3(0, 1.3, 0)
+	if shield_state == 1:
+		shield.global_position += shield_dir * 22.0 * delta
+		if shield_t > 0.6:
+			shield_state = 2
+			shield_hit.clear()
+	else:
+		var to := chest - shield.global_position
+		if to.length() < 1.0:
+			shield.queue_free()
+			shield_state = 0
+			if arm_shield:
+				arm_shield.visible = true
+			return
+		shield.global_position += to.normalized() * 26.0 * delta
+	shield.rotate_y(18.0 * delta)
+	for e in get_tree().get_nodes_in_group("enemies"):
+		if e in shield_hit:
+			continue
+		if (e.global_position + Vector3(0, 1.0, 0)).distance_to(shield.global_position) < 1.5:
+			shield_hit.append(e)
+			e.hit(25.0, shield.global_position)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -147,6 +231,30 @@ func _physics_process(delta: float) -> void:
 	yaw_pivot.rotation.y = yaw
 	pitch_pivot.rotation.x = pitch
 	if not active:
+		return
+	punch_cd = maxf(punch_cd - delta, 0.0)
+	punch_t = maxf(punch_t - delta, 0.0)
+	if global_position.y < -20.0:
+		respawn()
+	if hero == 0:
+		if Input.is_action_just_pressed("attack") and punch_cd <= 0.0:
+			do_punch()
+		if Input.is_action_just_pressed("throw") and shield_state == 0:
+			throw_shield()
+	if shield_state != 0:
+		update_shield(delta)
+
+	# Iron Man: Leertaste in der Luft = schweben, WASD fliegt in Blickrichtung
+	if hero == 1 and not is_on_floor() and Input.is_action_pressed("jump"):
+		var fi := Input.get_vector("move_left", "move_right", "move_forward", "move_back")
+		var fdir: Vector3 = cam.global_transform.basis * Vector3(fi.x, 0.0, fi.y)
+		var fspd := 24.0 if Input.is_action_pressed("sprint") else 14.0
+		var want := fdir.normalized() * fspd if fi.length() > 0.05 else Vector3.ZERO
+		velocity = velocity.move_toward(want, 50.0 * delta)
+		if fi.length() > 0.05:
+			model.rotation.y = lerp_angle(model.rotation.y, atan2(-fdir.x, -fdir.z), clamp(12.0 * delta, 0.0, 1.0))
+		move_and_slide()
+		animate(delta)
 		return
 	if not is_on_floor():
 		velocity.y -= 26.0 * delta
@@ -186,3 +294,5 @@ func animate(delta: float) -> void:
 		legs[1].rotation.x = 0.2
 		arms[0].rotation.x = -2.2
 		arms[1].rotation.x = -2.2
+	if punch_t > 0.0:
+		arms[1].rotation.x = -1.6

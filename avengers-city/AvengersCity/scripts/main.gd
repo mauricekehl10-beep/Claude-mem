@@ -4,6 +4,7 @@ extends Node3D
 const U = preload("res://scripts/util.gd")
 const PlayerScript = preload("res://scripts/player.gd")
 const CarScript = preload("res://scripts/car.gd")
+const EnemyScript = preload("res://scripts/enemy.gd")
 
 const BLOCK := 56.0
 const STREET := 16.0
@@ -26,6 +27,11 @@ func _ready() -> void:
 	player = PlayerScript.new()
 	add_child(player)
 	player.global_position = Vector3(36, 0, -20)
+	player.start_pos = player.global_position
+	for pos in [Vector3(34, 1, -45), Vector3(39, 1, -60), Vector3(34, 1, -80), Vector3(39, 1, -100), Vector3(36, 1, 60)]:
+		var en = EnemyScript.new()
+		add_child(en)
+		en.global_position = pos
 	vehicle = CarScript.new()
 	add_child(vehicle)
 	vehicle.global_position = Vector3(36, 0, 0)
@@ -51,6 +57,13 @@ func setup_input() -> void:
 			var ev := InputEventKey.new()
 			ev.physical_keycode = code
 			InputMap.action_add_event(act, ev)
+	for act in ["attack", "throw"]:
+		if not InputMap.has_action(act):
+			InputMap.add_action(act)
+		InputMap.action_erase_events(act)
+		var mev := InputEventMouseButton.new()
+		mev.button_index = MOUSE_BUTTON_LEFT if act == "attack" else MOUSE_BUTTON_RIGHT
+		InputMap.action_add_event(act, mev)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -306,7 +319,7 @@ func build_hud() -> void:
 	layer.add_child(prompt)
 	help = Label.new()
 	help.position = Vector2(18, 670)
-	help.text = "WASD laufen · Maus umsehen · Shift sprinten · Leertaste springen · Tab Held wechseln · G ins Auto und aussteigen · ESC Maus frei"
+	help.text = "WASD laufen · Maus umsehen · Shift sprinten · Leertaste springen · Tab Held wechseln · G ins Auto · ESC Maus frei\nCaptain: Linksklick schlagen · Rechtsklick Schild werfen   |   Iron Man: Leertaste in der Luft halten = fliegen"
 	layer.add_child(help)
 
 

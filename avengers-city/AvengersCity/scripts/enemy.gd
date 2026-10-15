@@ -102,4 +102,4 @@ func _physics_process(delta: float) -> void:
 	move_and_slide()
 
 	phase += delta * move.length() * 2.0
-	arm_r.rotation.x = -1.8 if swing > 0.0 else sin(phase) * 0.5
+	arm_r.rotation.x = 1.8 if swing > 0.0 else sin(phase) * 0.5

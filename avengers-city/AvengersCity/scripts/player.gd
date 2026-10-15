@@ -156,7 +156,13 @@ func build_model() -> void:
 		U.box(torso, Vector3(0.7, 1.2, 0.04), Vector3(0, 0.1, 0.24), U.mat(Color(0.7, 0.08, 0.08), 0.7))
 
 
+func face_camera() -> void:
+	var look: Vector3 = -yaw_pivot.global_transform.basis.z
+	model.rotation.y = atan2(-look.x, -look.z)
+
+
 func shoot() -> void:
+	face_camera()
 	shoot_cd = 0.25
 	punch_t = 0.15
 	var dir: Vector3 = -cam.global_transform.basis.z
@@ -205,6 +211,7 @@ func respawn() -> void:
 
 
 func do_punch(dmg: float = 15.0, reach: float = 2.4) -> void:
+	face_camera()
 	punch_cd = 0.4
 	punch_t = 0.2
 	for e in get_tree().get_nodes_in_group("enemies"):
@@ -216,6 +223,7 @@ func do_punch(dmg: float = 15.0, reach: float = 2.4) -> void:
 
 # Thor: Blitz auf den Gegner, der am besten im Blickfeld liegt (oder auf einen Punkt vor ihm)
 func lightning() -> void:
+	face_camera()
 	bolt_cd = 1.5
 	var look: Vector3 = -cam.global_transform.basis.z
 	look.y = 0.0
@@ -239,6 +247,7 @@ func lightning() -> void:
 
 
 func throw_shield() -> void:
+	face_camera()
 	shield_state = 1
 	shield_t = 0.0
 	shield_hit.clear()
@@ -320,7 +329,7 @@ func _physics_process(delta: float) -> void:
 	# Nach der Landung (Boden, Dach) muss die Leertaste erst losgelassen werden.
 	if is_on_floor() or not Input.is_action_pressed("jump"):
 		fly_lock = is_on_floor() and Input.is_action_pressed("jump")
-	flying = hero == 1 and not is_on_floor() and not fly_lock and Input.is_action_pressed("jump")
+	flying = (hero == 1 or hero == 2) and not is_on_floor() and not fly_lock and Input.is_action_pressed("jump")
 	if flying:
 		var fi := Input.get_vector("move_left", "move_right", "move_forward", "move_back")
 		var fdir: Vector3 = cam.global_transform.basis * Vector3(fi.x, 0.0, fi.y)
@@ -360,7 +369,7 @@ func animate(delta: float) -> void:
 	# Flugpose: nach vorne gelehnt, Arme nach vorn, Beine gestreckt
 	var lean := 0.0
 	if flying:
-		lean = -1.2 * clampf(velocity.length() / 14.0, 0.0, 1.0)
+		lean = (-1.2 if hero == 1 else -0.9) * clampf(velocity.length() / 14.0, 0.0, 1.0)
 	model.rotation.x = lerpf(model.rotation.x, lean, clampf(8.0 * delta, 0.0, 1.0))
 	# Drehpunkt in Hüfthöhe statt an den Füßen
 	var c := Vector3(0, 1.0, 0)
@@ -368,13 +377,19 @@ func animate(delta: float) -> void:
 	if legs.is_empty():
 		return
 	if flying:
-		legs[0].rotation.x = 0.15
-		legs[1].rotation.x = 0.15
-		var arm_up := -3.0 if lean < -0.3 else -0.35
-		arms[0].rotation.x = arm_up
-		arms[1].rotation.x = arm_up
+		legs[0].rotation.x = -0.2
+		legs[1].rotation.x = -0.2
+		var fast := lean < -0.3
+		if hero == 2:
+			# Thor: ein Arm mit Mjolnir nach vorn, der andere locker zur Seite
+			arms[1].rotation.x = 3.0 if fast else 0.7
+			arms[0].rotation.x = -0.7
+		else:
+			var arm_up := 3.0 if fast else 0.35
+			arms[0].rotation.x = arm_up
+			arms[1].rotation.x = arm_up
 		if punch_t > 0.0:
-			arms[1].rotation.x = -1.6
+			arms[1].rotation.x = 1.6
 		return
 	var sp := Vector2(velocity.x, velocity.z).length()
 	var k: float = clamp(sp / 6.0, 0.0, 1.0) if is_on_floor() else 0.0
@@ -390,4 +405,4 @@ func animate(delta: float) -> void:
 		arms[0].rotation.x = -2.2
 		arms[1].rotation.x = -2.2
 	if punch_t > 0.0:
-		arms[1].rotation.x = -1.6
+		arms[1].rotation.x = 1.6

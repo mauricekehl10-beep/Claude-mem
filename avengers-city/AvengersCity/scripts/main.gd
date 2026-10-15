@@ -175,8 +175,15 @@ func build_world() -> void:
 
 func build_block(cx: float, cz: float, tex: Texture2D) -> void:
 	var tall: bool = abs(cx) < 0.1 and abs(cz) < 0.1
-	var h: float = 70.0 if tall else randf_range(16.0, 52.0)
-	add_building(cx + randf_range(-3, 3), cz + randf_range(-3, 3), randf_range(24.0, 36.0), randf_range(24.0, 36.0), h, tex)
+	if tall:
+		add_building(cx, cz, 40.0, 40.0, 70.0, tex)
+		return
+	# Pro Block vier kleinere Häuser mit kleinen, passenden Fenstern
+	for sx in [-1, 1]:
+		for sz in [-1, 1]:
+			if randf() < 0.12:
+				continue
+			add_building(cx + sx * 14.0 + randf_range(-1.5, 1.5), cz + sz * 14.0 + randf_range(-1.5, 1.5), 24.0, 24.0, randf_range(14.0, 44.0), tex)
 
 
 func add_building(cx: float, cz: float, fw: float, fd: float, h: float, tex: Texture2D) -> void:
@@ -194,7 +201,8 @@ func add_building(cx: float, cz: float, fw: float, fd: float, h: float, tex: Tex
 	var model := U.load_model("building-%s.glb" % char(97 + randi() % 14))
 	if model:
 		var box := U.model_aabb(model)
-		var s := h / maxf(box.size.y, 0.01)
+		var s := minf(h / maxf(box.size.y, 0.01), minf(fw / maxf(box.size.x, 0.01), fd / maxf(box.size.z, 0.01)))
+		tint_model(model, TINTS[randi() % TINTS.size()])
 		model.scale = Vector3.ONE * s
 		model.position = Vector3(-box.get_center().x * s, -box.position.y * s, -box.get_center().z * s)
 		body.add_child(model)
@@ -213,6 +221,23 @@ func add_building(cx: float, cz: float, fw: float, fd: float, h: float, tex: Tex
 			U.box(body, Vector3(fw * 0.4, 4.0, fd * 0.4), Vector3(0, h + 2.0, 0), U.mat(Color(0.25, 0.27, 0.32), 0.7, 0.2))
 		if h > 40.0:
 			U.cyl(body, 0.12, 8.0, Vector3(0, h + 4.0, 0), U.glow(Color(1, 0.2, 0.2), 3.0))
+
+
+const TINTS := [Color(1, 1, 1), Color(1.0, 0.88, 0.72), Color(0.78, 0.86, 1.0), Color(0.95, 0.7, 0.62), Color(0.75, 0.92, 0.82), Color(0.95, 0.93, 0.7), Color(0.82, 0.78, 0.95)]
+
+
+# Färbt ein Haus ein (jedes Haus bekommt seine eigene Materialkopie)
+func tint_model(node: Node, c: Color) -> void:
+	var mi := node as MeshInstance3D
+	if mi and mi.mesh:
+		for i in range(mi.mesh.get_surface_count()):
+			var sm := mi.get_active_material(i) as StandardMaterial3D
+			if sm:
+				var d := sm.duplicate() as StandardMaterial3D
+				d.albedo_color = sm.albedo_color * c
+				mi.set_surface_override_material(i, d)
+	for ch in node.get_children():
+		tint_model(ch, c)
 
 
 func add_mesh_collision(node: Node3D, body: StaticBody3D, xform: Transform3D) -> void:

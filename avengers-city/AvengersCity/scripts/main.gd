@@ -118,9 +118,15 @@ func build_environment() -> void:
 	env.glow_bloom = 0.1
 	env.fog_enabled = true
 	env.fog_sky_affect = 0.0
-	env.fog_light_color = Color(0.35, 0.3, 0.5)
-	env.fog_density = 0.003
+	env.fog_light_color = Color(0.72, 0.82, 0.95)
+	env.fog_density = 0.004
+	env.fog_aerial_perspective = 0.4
 	env.ssao_enabled = true
+	env.ssao_radius = 2.0
+	env.ssao_intensity = 2.0
+	env.adjustment_enabled = true
+	env.adjustment_saturation = 1.2
+	env.adjustment_contrast = 1.06
 	var we := WorldEnvironment.new()
 	we.environment = env
 	add_child(we)
@@ -128,9 +134,9 @@ func build_environment() -> void:
 	var sun := DirectionalLight3D.new()
 	sun.rotation_degrees = Vector3(-55, 35, 0)
 	sun.light_energy = 1.6
-	sun.light_color = Color(1.0, 0.9, 0.75)
+	sun.light_color = Color(1.0, 0.93, 0.8)
 	sun.shadow_enabled = true
-	sun.directional_shadow_max_distance = 200.0
+	sun.directional_shadow_max_distance = 320.0
 	add_child(sun)
 
 

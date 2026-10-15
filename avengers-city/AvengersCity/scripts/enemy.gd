@@ -47,7 +47,7 @@ func _ready() -> void:
 	bar.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	bar.no_depth_test = true
 	bar.font_size = 48
-	bar.pixel_size = 0.01
+	bar.pixel_size = 0.006
 	bar.position = Vector3(0, 2.6, 0)
 	add_child(bar)
 	update_bar()

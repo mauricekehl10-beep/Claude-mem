@@ -1,5 +1,7 @@
 extends RefCounted
-# Hilfsfunktionen: Materialien und einfache Formen (ohne Instanz nutzbar).
+# Hilfsfunktionen: Materialien, einfache Formen und geladene Assets (ohne Instanz nutzbar).
+
+static var _index := {}
 
 
 static func mat(c: Color, rough: float = 0.6, metal: float = 0.0) -> StandardMaterial3D:
@@ -54,3 +56,55 @@ static func cyl(parent: Node3D, r: float, h: float, pos: Vector3, m: Material, r
 	mi.rotation_degrees = rot
 	parent.add_child(mi)
 	return mi
+
+
+# Sucht eine Datei (z. B. "building-a.glb") rekursiv im Ordner res://Assets.
+static func find_asset(file: String) -> String:
+	if _index.is_empty():
+		_index_dir("res://Assets")
+		_index["_done"] = true
+	return _index.get(file, "")
+
+
+static func _index_dir(dir: String) -> void:
+	var da := DirAccess.open(dir)
+	if da == null:
+		return
+	da.list_dir_begin()
+	var name := da.get_next()
+	while name != "":
+		var path := dir.path_join(name)
+		if da.current_is_dir():
+			if not name.begins_with("."):
+				_index_dir(path)
+		elif not name.ends_with(".import") and not _index.has(name):
+			_index[name] = path
+		name = da.get_next()
+	da.list_dir_end()
+
+
+# Lädt ein Modell aus den Assets. Gibt null zurück, wenn es fehlt.
+static func load_model(file: String) -> Node3D:
+	var path := find_asset(file)
+	if path == "":
+		return null
+	var scene := load(path) as PackedScene
+	if scene == null:
+		return null
+	return scene.instantiate() as Node3D
+
+
+# Begrenzungsbox eines Modells, in Koordinaten des Modells selbst.
+static func model_aabb(node: Node3D, xform: Transform3D = Transform3D.IDENTITY) -> AABB:
+	var out := AABB()
+	var has := false
+	if node is MeshInstance3D and (node as MeshInstance3D).mesh:
+		out = xform * (node as MeshInstance3D).mesh.get_aabb()
+		has = true
+	for c in node.get_children():
+		if c is Node3D:
+			var sub := model_aabb(c, xform * (c as Node3D).transform)
+			if sub.size != Vector3.ZERO:
+				out = out.merge(sub) if has else sub
+				has = true
+	return out

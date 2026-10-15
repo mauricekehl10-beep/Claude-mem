@@ -88,7 +88,13 @@ func build_environment() -> void:
 	psm.sky_horizon_color = Color(0.45, 0.36, 0.6)
 	psm.ground_horizon_color = Color(0.25, 0.2, 0.3)
 	psm.ground_bottom_color = Color(0.05, 0.05, 0.07)
-	sky.sky_material = psm
+	var hdr := U.find_asset("quarry_01_puresky_2k.hdr")
+	if hdr != "":
+		var pano := PanoramaSkyMaterial.new()
+		pano.panorama = load(hdr)
+		sky.sky_material = pano
+	else:
+		sky.sky_material = psm
 	env.sky = sky
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
 	env.ambient_light_energy = 0.6
@@ -168,18 +174,28 @@ func add_building(cx: float, cz: float, fw: float, fd: float, h: float, tex: Tex
 	m.emission_energy_multiplier = 0.9
 	m.roughness = 0.55
 	var body := StaticBody3D.new()
-	body.position = Vector3(cx, h * 0.5 + 0.05, cz)
+	body.position = Vector3(cx, 0.05, cz)
 	add_child(body)
-	U.box(body, Vector3(fw, h, fd), Vector3.ZERO, m)
+	var model := U.load_model("building-%s.glb" % char(97 + randi() % 14))
+	if model:
+		var box := U.model_aabb(model)
+		var s := h / maxf(box.size.y, 0.01)
+		model.scale = Vector3.ONE * s
+		model.position = Vector3(-box.get_center().x * s, -box.position.y * s, -box.get_center().z * s)
+		body.add_child(model)
+	else:
+		U.box(body, Vector3(fw, h, fd), Vector3(0, h * 0.5, 0), m)
 	var col := CollisionShape3D.new()
 	var bs := BoxShape3D.new()
 	bs.size = Vector3(fw, h, fd)
 	col.shape = bs
+	col.position = Vector3(0, h * 0.5, 0)
 	body.add_child(col)
-	if randf() < 0.5:
-		U.box(body, Vector3(fw * 0.4, 4.0, fd * 0.4), Vector3(0, h * 0.5 + 2.0, 0), U.mat(Color(0.25, 0.27, 0.32), 0.7, 0.2))
-	if h > 40.0:
-		U.cyl(body, 0.12, 8.0, Vector3(0, h * 0.5 + 4.0, 0), U.glow(Color(1, 0.2, 0.2), 3.0))
+	if not model:
+		if randf() < 0.5:
+			U.box(body, Vector3(fw * 0.4, 4.0, fd * 0.4), Vector3(0, h + 2.0, 0), U.mat(Color(0.25, 0.27, 0.32), 0.7, 0.2))
+		if h > 40.0:
+			U.cyl(body, 0.12, 8.0, Vector3(0, h + 4.0, 0), U.glow(Color(1, 0.2, 0.2), 3.0))
 
 
 func build_park(cx: float, cz: float) -> void:

@@ -71,6 +71,17 @@ func build_model() -> void:
 	legs.clear()
 	arms.clear()
 
+	# Captain America nutzt das geladene Modell, wenn es vorhanden ist.
+	var real: Node3D = U.load_model("Superhero_Male_FullBody.gltf") if hero == 0 else null
+	if real:
+		var box := U.model_aabb(real)
+		var s := 1.85 / maxf(box.size.y, 0.01)
+		real.scale = Vector3.ONE * s
+		real.position = Vector3(-box.get_center().x * s, -box.position.y * s, -box.get_center().z * s)
+		real.rotation.y = PI
+		model.add_child(real)
+		return
+
 	var suit := U.mat(h["suit"], 0.5, 0.1)
 	var accent := U.mat(h["accent"], 0.4, 0.3)
 	var trim := U.mat(h["trim"], 0.25, 0.7)
@@ -157,6 +168,8 @@ func _physics_process(delta: float) -> void:
 
 
 func animate(delta: float) -> void:
+	if legs.is_empty():
+		return
 	var sp := Vector2(velocity.x, velocity.z).length()
 	var k: float = clamp(sp / 6.0, 0.0, 1.0) if is_on_floor() else 0.0
 	phase += delta * sp * 1.3

@@ -23,6 +23,10 @@ func _ready() -> void:
 
 
 static func build_visual(parent: Node3D, c: Color) -> void:
+	var car := U.load_model("sedan.glb")
+	if car:
+		fit_car(parent, car)
+		return
 	var paint := U.mat(c, 0.25, 0.45)
 	var glass := U.mat(Color(0.08, 0.12, 0.18), 0.08, 0.6)
 	var dark := U.mat(Color(0.05, 0.05, 0.06), 0.9)
@@ -36,6 +40,19 @@ static func build_visual(parent: Node3D, c: Color) -> void:
 	for x in [-0.6, 0.6]:
 		U.box(parent, Vector3(0.4, 0.14, 0.05), Vector3(x, 0.75, -2.12), head_light)
 		U.box(parent, Vector3(0.4, 0.14, 0.05), Vector3(x, 0.75, 2.12), tail_light)
+
+
+static func fit_car(parent: Node3D, car: Node3D) -> void:
+	# Auf 4.2 Meter Länge skalieren, Boden auf Höhe 0 setzen, Längsachse nach Z drehen.
+	var box := U.model_aabb(car)
+	var s := 4.2 / maxf(maxf(box.size.x, box.size.z), 0.01)
+	car.scale = Vector3.ONE * s
+	car.position = Vector3(-box.get_center().x * s, -box.position.y * s, -box.get_center().z * s)
+	var holder := Node3D.new()
+	if box.size.x > box.size.z:
+		holder.rotation.y = PI * 0.5
+	holder.add_child(car)
+	parent.add_child(holder)
 
 
 func _physics_process(delta: float) -> void:

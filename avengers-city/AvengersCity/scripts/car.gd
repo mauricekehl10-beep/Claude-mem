@@ -2,6 +2,7 @@ extends CharacterBody3D
 # Auto zum Fahren: W/S Gas und Bremse, A/D lenken. Modell aus einfachen Formen.
 
 const U = preload("res://scripts/util.gd")
+const CityCars = preload("res://scripts/city_cars.gd")
 
 var active := false
 var speed := 0.0
@@ -11,7 +12,7 @@ var cam: Camera3D
 func _ready() -> void:
 	var col := CollisionShape3D.new()
 	var bs := BoxShape3D.new()
-	bs.size = Vector3(1.9, 1.2, 4.2)
+	bs.size = Vector3(1.9, 1.2, 3.9)
 	col.shape = bs
 	col.position = Vector3(0, 0.6, 0)
 	add_child(col)
@@ -23,9 +24,17 @@ func _ready() -> void:
 
 
 static func build_visual(parent: Node3D, c: Color) -> void:
-	var car := U.load_model("sedan.glb")
-	if car:
-		fit_car(parent, car)
+	# Modell wie die geparkten Autos (gemeinsamer Lack-Shader), Farbe aus c
+	if U.find_asset("sedan.glb") != "":
+		var info := CityCars.merged("sedan.glb")
+		var mi := MeshInstance3D.new()
+		mi.mesh = info[0]
+		var mat := (info[2] as ShaderMaterial).duplicate() as ShaderMaterial
+		mat.set_shader_parameter("use_instance", false)
+		mat.set_shader_parameter("tune", Vector4(fposmod(c.h - 0.02, 1.0), 1.0, 1.0, 0.0))
+		mi.material_override = mat
+		mi.rotation.y = PI  # Modellfront (+Z) nach vorn (-Z)
+		parent.add_child(mi)
 		return
 	var paint := U.mat(c, 0.25, 0.45)
 	var glass := U.mat(Color(0.08, 0.12, 0.18), 0.08, 0.6)
@@ -80,5 +89,8 @@ func _physics_process(delta: float) -> void:
 		velocity.z = move_toward(velocity.z, 0.0, 20.0 * delta)
 		speed = move_toward(speed, 0.0, 10.0 * delta)
 	move_and_slide()
-	if get_slide_collision_count() > 0:
-		speed *= 0.5
+	# Nur echte Hindernisse (Waende, Autos) bremsen, nicht der Boden oder flache Bordsteinrampen
+	for i in range(get_slide_collision_count()):
+		if get_slide_collision(i).get_normal().y < 0.6:
+			speed *= 0.5
+			break

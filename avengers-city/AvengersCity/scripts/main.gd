@@ -31,6 +31,8 @@ var city_gen
 var city_props
 var city_cars
 var city_park
+var traffic
+var car_target := {}  # naechstes einsteigbares Auto (kind: vehicle/parked/traffic)
 var U_SOLID: Material = CityMats.solid()
 
 
@@ -50,6 +52,7 @@ func _ready() -> void:
 	vehicle = CarScript.new()
 	add_child(vehicle)
 	vehicle.global_position = Vector3(36, 0, 0)
+	traffic.main_ref = self
 	build_hud()
 
 
@@ -151,10 +154,10 @@ func build_world() -> void:
 	build_lamps()
 	build_parked_cars()
 	# Fahrender Verkehr
-	var traffic := CityTraffic.new()
+	traffic = CityTraffic.new()
 	traffic.name = "Traffic"
 	add_child(traffic)
-	traffic.setup(26, 77)
+	traffic.setup(90, 77)
 
 
 func build_block(cx: float, cz: float, gen, zone: int, core: bool) -> Node3D:
@@ -209,39 +212,135 @@ func build_hud() -> void:
 		bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		crosshair.add_child(bar)
 	help = Label.new()
-	help.position = Vector2(18, 670)
-	help.text = "WASD laufen · Maus umsehen · Shift sprinten · Leertaste springen · Tab Held wechseln · G ins Auto · ESC Maus frei\nCaptain: Linksklick schlagen · Rechtsklick Schild werfen   |   Iron Man: in der Luft Leertaste halten = fliegen · Linksklick schießen · Strg sinken (oder Leertaste loslassen = landen)   |   Thor: Linksklick Hammer · Rechtsklick Blitz"
+	help.position = Vector2(18, 640)
+	help.text = "WASD laufen · Maus umsehen · Shift sprinten · Leertaste springen · Tab Held wechseln · G ins Auto ein/aus · ESC Maus frei
+Captain: Linksklick schlagen · Rechtsklick Schild werfen  |  Thor: Linksklick Hammer · Rechtsklick Blitz  |  Iron Man: Linksklick schießen
+Fliegen (Iron Man/Thor): Leertaste 2x tippen = start/ende · W/A/S/D in Blickrichtung · Leertaste steigen · Strg sinken · Shift Boost  |  Auto: Leertaste Drift"
 	layer.add_child(help)
 
 
 func _process(_delta: float) -> void:
-	var near: bool = (not in_car) and player.global_position.distance_to(vehicle.global_position) < 4.5
+	var near := false
+	if not in_car:
+		car_target = find_car_target()
+		near = not car_target.is_empty()
 	if Input.is_action_just_pressed("interact"):
 		if in_car:
 			exit_car()
 		elif near:
-			enter_car()
+			enter_car(car_target)
 	if Input.is_action_just_pressed("switch_hero") and not in_car:
 		player.next_hero()
 	crosshair.visible = not in_car
 	crosshair.position = (get_viewport().get_visible_rect().size * 0.5).floor()
-	prompt.text = "G: Einsteigen" if near else ""
+	prompt.text = "G: Einsteigen" if near else ("G: Aussteigen" if in_car and absf(vehicle.speed) < 4.0 else "")
 	if in_car:
 		hud.text = "Auto · %d km/h" % int(abs(vehicle.speed) * 3.6)
 	else:
 		hud.text = "%s · zu Fuss" % player.hero_name()
 
 
-func enter_car() -> void:
+# Naechstes Auto in Reichweite: das eigene, ein geparktes/abgestelltes oder ein fahrendes Verkehrsauto
+func find_car_target() -> Dictionary:
+	var p: Vector3 = player.global_position
+	var best := {}
+	var bd := 2.6
+	var vd: float = CityCars.box_dist(p, vehicle.global_transform, vehicle.size)
+	if vd < bd:
+		bd = vd
+		best = {"kind": "vehicle"}
+	var r: Dictionary = city_cars.find_near(p, bd)
+	if not r.is_empty():
+		bd = r["dist"]
+		best = {"kind": "parked", "rec": r["rec"]}
+	var t: Dictionary = traffic.find_near(p, bd)
+	if not t.is_empty():
+		best = {"kind": "traffic", "car": t["car"]}
+	return best
+
+
+# Einsteigen: das Spieler-Auto uebernimmt Platz, Drehung, Modell und Lack des Zielautos;
+# das bisherige Auto bleibt als abgestelltes Auto stehen.
+func enter_car(target: Dictionary = {}) -> void:
+	var start_speed := 0.0
+	var kind: String = target.get("kind", "vehicle")
+	if kind != "vehicle":
+		var xf: Transform3D
+		var type: String
+		var paint: Color
+		if kind == "parked":
+			var rec: Dictionary = target["rec"]
+			xf = rec["xf"]
+			type = rec["type"]
+			paint = rec["paint"]
+			city_cars.take(rec)
+		else:
+			var c: Dictionary = target["car"]
+			xf = Transform3D(Basis(Vector3.UP, c["yaw"]), c["pos"])
+			type = c["type"]
+			paint = c["paint"]
+			start_speed = c["v"]
+			traffic.take(c)
+		var old: Transform3D = vehicle.global_transform
+		old.origin.y = 0.0
+		city_cars.add_dynamic(vehicle.type, old, vehicle.paint)
+		vehicle.setup(type, paint)
+		xf.origin.y = 0.03
+		vehicle.global_transform = xf
+		vehicle.velocity = Vector3.ZERO
+		vehicle.vel = Vector3.ZERO
 	in_car = true
-	vehicle.active = true
-	vehicle.cam.current = true
+	vehicle.enter(start_speed)
 	player.set_active(false)
 
 
 func exit_car() -> void:
 	in_car = false
-	vehicle.active = false
-	vehicle.speed = 0.0
-	player.global_position = vehicle.global_position + vehicle.global_transform.basis.x * 2.2 + Vector3(0, 0.2, 0)
+	vehicle.leave()
+	var pos := find_exit_pos()
+	player.global_position = pos
+	player.yaw = vehicle.rotation.y
 	player.set_active(true)
+
+
+# Freien Platz neben dem Auto suchen (Boden darunter, keine Wand dazwischen, Kapsel passt)
+func find_exit_pos() -> Vector3:
+	var b: Basis = vehicle.global_transform.basis
+	var c: Vector3 = vehicle.global_position
+	var hw: float = vehicle.size.x * 0.5
+	var hl: float = vehicle.size.z * 0.5
+	var cands := []
+	for off in [hw + 0.85, hw + 1.5]:
+		cands.append(c - b.x * off)
+		cands.append(c + b.x * off)
+	cands.append(c + b.z * (hl + 1.1))
+	cands.append(c - b.z * (hl + 1.1))
+	for p in cands:
+		var q = exit_ok(p, c)
+		if q != null:
+			return q
+	return Vector3(c.x, vehicle.size.y * 0.9 + 0.1, c.z)  # Notfall: aufs Dach
+
+
+func exit_ok(p: Vector3, from: Vector3):
+	var space: PhysicsDirectSpaceState3D = get_world_3d().direct_space_state
+	var ex := [vehicle.get_rid(), player.get_rid()]
+	var ray := PhysicsRayQueryParameters3D.create(p + Vector3(0, 2.5, 0), p + Vector3(0, -1.5, 0), 1, ex)
+	var h := space.intersect_ray(ray)
+	if h.is_empty() or h["normal"].y < 0.7 or h["position"].y > 0.5:
+		return null
+	var gy: float = h["position"].y
+	var wr := PhysicsRayQueryParameters3D.create(from + Vector3(0, 0.9, 0), Vector3(p.x, gy + 0.9, p.z), 1, ex)
+	if not space.intersect_ray(wr).is_empty():
+		return null
+	var sh := CapsuleShape3D.new()
+	sh.radius = 0.42
+	sh.height = 1.8
+	var qp := PhysicsShapeQueryParameters3D.new()
+	qp.shape = sh
+	qp.transform = Transform3D(Basis(), Vector3(p.x, gy + 0.95, p.z))
+	qp.exclude = ex
+	qp.collision_mask = 1
+	if not space.intersect_shape(qp, 1).is_empty():
+		return null
+	return Vector3(p.x, gy + 0.05, p.z)

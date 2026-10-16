@@ -4,6 +4,9 @@ extends RefCounted
 const MB = preload("res://scripts/city_mesh.gd")
 const M = preload("res://scripts/city_mats.gd")
 const Trees = preload("res://scripts/city_trees.gd")
+const Traffic = preload("res://scripts/city_traffic.gd")
+
+static var _sig_mat: ShaderMaterial
 
 var trees := Trees.new()
 var rng := RandomNumberGenerator.new()
@@ -192,8 +195,8 @@ func signal_corner(mb, mat: Material, p: Vector3, sx: float, sz: float, phase: b
 	mb.tube(mat, top, ax_end, 0.07, 0.05, 6, POLE, 0.5, 0.6)
 	mb.tube(mat, top, az_end, 0.07, 0.05, 6, POLE, 0.5, 0.6)
 	# Koepfe: z-Strassenverkehr schaut gegen -sz, x-Strassenverkehr gegen -sx
-	signal_head(mb, mat, top + Vector3(sx * 5.4, -0.2, 0), Vector3(0, 0, -sz), phase)
-	signal_head(mb, mat, top + Vector3(0, -0.2, sz * 5.4), Vector3(-sx, 0, 0), not phase)
+	signal_head(mb, mat, top + Vector3(sx * 5.4, -0.2, 0), Vector3(0, 0, -sz), phase, 1)
+	signal_head(mb, mat, top + Vector3(0, -0.2, sz * 5.4), Vector3(-sx, 0, 0), not phase, 0)
 	# Strassenschild
 	mb.sbox(mat, top.x - 0.65 - 0.0, top.y + 0.55, top.z - 0.02, top.x + 0.65, top.y + 0.8, top.z + 0.02, Color(0.05, 0.4, 0.2), 0.4, 0.2)
 	mb.sbox(mat, top.x - 0.02, top.y + 0.55, top.z - 0.65, top.x + 0.02, top.y + 0.8, top.z + 0.65, Color(0.05, 0.4, 0.2), 0.4, 0.2)
@@ -203,7 +206,7 @@ func signal_corner(mb, mat: Material, p: Vector3, sx: float, sz: float, phase: b
 
 
 # Ampelkopf: facing = Blickrichtung der Linsen (zum ankommenden Verkehr). green = gruen an
-func signal_head(mb, mat: Material, c: Vector3, facing: Vector3, green: bool) -> void:
+func signal_head(mb, mat: Material, c: Vector3, facing: Vector3, green: bool, axis: int = 0) -> void:
 	var fx := absf(facing.x)
 	var fz := absf(facing.z)
 	var wx := 0.17 * fz + 0.2 * fx
@@ -219,7 +222,8 @@ func signal_head(mb, mat: Material, c: Vector3, facing: Vector3, green: bool) ->
 		var e := 4.0 if lit else 0.0
 		var cc: Color = lc if lit else lc.darkened(0.8)
 		var o: Vector3 = facing * 0.2
-		mb.sbox(mat, c.x + o.x - 0.1 * fz - 0.01 * fx, cy - 0.08, c.z + o.z - 0.1 * fx - 0.01 * fz, c.x + o.x + 0.1 * fz + 0.03 * fx, cy + 0.08, c.z + o.z + 0.1 * fx + 0.03 * fz, cc, 0.3, 0.0, e)
+		# Linse: leuchtet nach der Ampelphase (Shader), k = Lampe, axis = Achse des Verkehrs
+		mb.sbox(sig_mat(), c.x + o.x - 0.1 * fz - 0.01 * fx, cy - 0.08, c.z + o.z - 0.1 * fx - 0.01 * fz, c.x + o.x + 0.1 * fz + 0.03 * fx, cy + 0.08, c.z + o.z + 0.1 * fx + 0.03 * fz, lc, float(k), float(axis), 0.0)
 
 
 # Parklaterne: niedriger Mast mit Laterne
@@ -230,3 +234,12 @@ func park_lamp(mb, mat: Material, pos: Vector3) -> void:
 	mb.sbox(mat, l.x - 0.22, l.y + 3.95, l.z - 0.22, l.x + 0.22, l.y + 4.45, l.z + 0.22, Color(0.95, 0.9, 0.75), 0.2, 0.0, 0.5)
 	mb.sbox(mat, l.x - 0.3, l.y + 4.45, l.z - 0.3, l.x + 0.3, l.y + 4.55, l.z + 0.3, POLE, 0.5, 0.5)
 	mb.sbox(mat, l.x - 0.3, l.y + 3.85, l.z - 0.3, l.x + 0.3, l.y + 3.95, l.z + 0.3, POLE, 0.5, 0.5)
+
+
+# Gemeinsames Material der Ampellinsen (Phase kommt aus der globalen Uhr sig_clock)
+static func sig_mat() -> ShaderMaterial:
+	if _sig_mat == null:
+		Traffic.ensure_globals()
+		_sig_mat = ShaderMaterial.new()
+		_sig_mat.shader = load("res://scripts/city_signal.gdshader")
+	return _sig_mat

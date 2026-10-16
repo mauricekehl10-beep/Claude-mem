@@ -89,6 +89,27 @@ func build(parent: Node3D, cx: float, cz: float, ix: int, iz: int, props) -> voi
 		if p.length() < 13.5:
 			continue
 		props.trees.add("bush", Vector3(cx + p.x, 0.17, cz + p.y), rng, rng.randf_range(0.9, 1.6))
+	# Gras-Buescheln auf dem Rasen (nicht auf den Wegen), Blumenbeet um den Brunnenplatz und Blumengruppen
+	for i in range(1500):
+		var p := Vector2(rng.randf_range(-24.5, 24.5), rng.randf_range(-24.5, 24.5))
+		if p.length() < 9.6 or on_path(p, variant, 0.5):
+			continue
+		props.trees.add("tuft", Vector3(cx + p.x, 0.17, cz + p.y), rng, rng.randf_range(0.7, 1.3))
+	for i in range(170):
+		var a := rng.randf() * TAU
+		var rr := rng.randf_range(9.8, 13.6)
+		var p := Vector2(cos(a), sin(a)) * rr
+		if on_path(p, variant, 0.2):
+			continue
+		props.trees.add("flowers", Vector3(cx + p.x, 0.17, cz + p.y), rng, rng.randf_range(0.8, 1.3))
+	for g in range(9):
+		var gc := Vector2(rng.randf_range(-21, 21), rng.randf_range(-21, 21))
+		if gc.length() < 14.0 or on_path(gc, variant, 2.5):
+			continue
+		for i in range(14):
+			var p := gc + Vector2(rng.randfn(), rng.randfn()) * 1.3
+			if not on_path(p, variant, 0.5):
+				props.trees.add("flowers", Vector3(cx + p.x, 0.17, cz + p.y), rng, rng.randf_range(0.8, 1.3))
 	# Kollision: nur die flache Rasenflaeche (begehbar), Brunnenbecken
 	var body := StaticBody3D.new()
 	node.add_child(body)
@@ -105,6 +126,18 @@ func build(parent: Node3D, cx: float, cz: float, ix: int, iz: int, props) -> voi
 	fc.shape = fs
 	fc.position = Vector3(0, 0.5, 0)
 	body.add_child(fc)
+
+
+# Liegt p (Meter, Blockmitte = 0) auf einem Weg oder Platz? (wie im Rasen-Shader, mit Rand m)
+static func on_path(p: Vector2, variant: int, m: float) -> bool:
+	var d := p.length() - 8.5
+	if variant == 0:
+		d = minf(minf(absf(p.x), absf(p.y)) - 1.6, d)
+	elif variant == 1:
+		d = minf(minf(absf(p.x - p.y), absf(p.x + p.y)) * 0.7071 - 1.6, d)
+	else:
+		d = minf(minf(absf(p.length() - 15.0) - 1.5, minf(absf(p.x), absf(p.y)) - 1.2), d)
+	return d < m
 
 
 func fountain(mb, solid) -> void:

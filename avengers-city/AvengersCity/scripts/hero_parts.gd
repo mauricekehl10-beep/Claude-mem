@@ -7,6 +7,7 @@ const U = preload("res://scripts/util.gd")
 const SHIELD_SHADER = preload("res://scripts/shield.gdshader")
 const HAIR_SHADER = preload("res://scripts/hair.gdshader")
 const Cape = preload("res://scripts/cape.gd")
+const Hair = preload("res://scripts/hero_hair.gd")
 const IronFx = preload("res://scripts/iron_fx.gd")
 
 const GOLD := Color(0.88, 0.58, 0.14)
@@ -159,19 +160,14 @@ static func hair_mat(c: Color) -> ShaderMaterial:
 
 
 static func thor(skel: Skeleton3D) -> void:
-	var gold := hair_mat(Color(0.82, 0.62, 0.24))
-	var light := hair_mat(Color(0.9, 0.73, 0.36))
-	var dark := hair_mat(Color(0.68, 0.5, 0.19))
 	var H := "mixamorig_Head"
-	# Haarkappe, Mähne am Hinterkopf, Strähnen an den Schläfen
-	put(skel, H, m_sphere(), gold, xf(Vector3(0, 1.705, -0.02), Vector3(-4, 0, 0), Vector3(0.092, 0.116, 0.126)))
-	put(skel, H, m_sphere(), gold, xf(Vector3(0, 1.60, -0.118), Vector3(-6, 0, 0), Vector3(0.092, 0.17, 0.058)))
-	put(skel, H, m_sphere(), dark, xf(Vector3(0, 1.50, -0.138), Vector3(-10, 0, 0), Vector3(0.078, 0.13, 0.045)))
-	for s in [-1.0, 1.0]:
-		put(skel, H, m_sphere(), light, xf(Vector3(s * 0.088, 1.64, -0.02), Vector3(0, 0, s * 4.0), Vector3(0.024, 0.1, 0.07)))
-		put(skel, H, m_sphere(), dark, xf(Vector3(s * 0.075, 1.57, -0.062), Vector3(-8, 0, s * 8.0), Vector3(0.026, 0.075, 0.05)))
-	# Bart
-	put(skel, H, m_sphere(), hair_mat(Color(0.66, 0.48, 0.18)), xf(Vector3(0, 1.584, 0.094), Vector3(10, 0, 0), Vector3(0.04, 0.026, 0.03)))
+	# Haar und Bart: einzelne Strähnen (hero_hair.gd), Material hair.gdshader
+	var am := Hair.empty()
+	Hair.hair(am, 640, 11, Color(0.86, 0.66, 0.30))
+	Hair.beard(am, 380, 12, Color(0.62, 0.45, 0.20))
+	var hm := ShaderMaterial.new()
+	hm.shader = HAIR_SHADER
+	put(skel, H, Hair.mesh(am), hm, Transform3D.IDENTITY)
 	# Umhang-Schliesse an den Schultern
 	var S := "mixamorig_Spine2"
 	var silver := metal(Color(0.74, 0.76, 0.80), 0.3, 0.9)

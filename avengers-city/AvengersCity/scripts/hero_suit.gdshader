@@ -59,6 +59,8 @@ float stripes(float y, float y0, float hs, float w) {
 	return clamp((abs(fract(k * 0.5) - 0.5) - 0.25) / e, -0.5, 0.5) + 0.5;
 }
 
+#include "res://scripts/hero_face.gdshaderinc"
+
 // ---------------------------------------------------------------- Captain America
 // col/met/rou/emi = Farbe, Metall, Rauheit, Leuchten; hgt = Relief in Metern (für Kanten-Licht)
 void cap(vec3 p, float w, out vec3 col, out float met, out float rou, out vec3 emi, out float hgt) {
@@ -145,26 +147,38 @@ void cap(vec3 p, float w, out vec3 col, out float met, out float rou, out vec3 e
 		col = mix(col, lin(vec3(0.07, 0.05, 0.04)), 1.0 - smoothstep(0.012, 0.02, p.y));
 		rou = mix(rou, 0.65, b);
 	}
-	// Kopf: Haube mit offenem Gesicht
+	// Kopf: Haube mit offenem Gesicht (Öffnung: open_w, Relief: hero_face.gd)
 	if (p.y > 1.545 && ax < 0.13) {
-		col = blue;
-		rou = 0.5;
-		hgt = 0.0;
 		float hm = smoothstep(0.03, 0.07, p.z);
-		float op = cov(box2(vec2(p.x, p.y - 1.640), vec2(0.040, 0.050)) - 0.020, w) * hm;
-		col = mix(col, skin, op);
-		rou = mix(rou, 0.65, op);
-		// Augen, Brauen, Mund
-		float eye = cov(box2(vec2(ax - 0.030, p.y - 1.664), vec2(0.010, 0.0045)), w);
-		float brow = cov(seg(vec2(ax, p.y), vec2(0.02, 1.682), vec2(0.045, 1.690)) - 0.0035, w);
-		float mouth = cov(seg(p.xy, vec2(-0.016, 1.598), vec2(0.016, 1.598)) - 0.0025, w);
-		col = mix(col, lin(vec3(0.07, 0.05, 0.05)), max(eye, brow * 0.8) * hm);
-		col = mix(col, lin(vec3(0.55, 0.22, 0.20)), mouth * hm);
+		float od = ax - open_w(p.y);  // < 0 in der Öffnung
+		float op = cov(od, w) * hm;
+		// Haube: feines Gewebe, Mittelnaht, gesteppter Rand
+		col = blue * (0.88 + 0.22 * vn(vec2(p.x + p.z, p.y) * 460.0));
+		col *= 0.80 + 0.20 * smoothstep(-0.12, 0.08, p.z);
+		rou = 0.52;
+		hgt = 0.0;
+		float seam = cov(abs(p.x) - 0.0009, w) * smoothstep(1.76, 1.78, p.y);
+		col = mix(col, navy, seam * 0.8);
+		float hem = cov(abs(od - 0.0030) - 0.0005, w) * hm * step(0.5, fract((p.y + ax * 0.6) * 240.0));
+		col = mix(col, lin(vec3(0.20, 0.30, 0.65)), hem * 0.7 * (1.0 - op));
+		col = mix(col, navy, 0.35 * gs(od - 0.004, 0.004) * hm * (1.0 - op));
+		// Gesicht
+		vec3 fcol = col;
+		float frou = rou;
+		vec3 femi = emi;
+		human_face(p, w, skin, lin(vec3(0.30, 0.48, 0.70)), lin(vec3(0.20, 0.12, 0.07)), lin(vec3(0.62, 0.30, 0.28)), op, fcol, frou, femi);
+		col = fcol;
+		rou = frou;
+		emi = femi;
+		col *= 1.0 - 0.20 * gs(od + 0.003, 0.004) * op;
 		// weißes A auf der Stirn
-		vec2 q = p.xy - vec2(0.0, 1.735);
-		float la = seg(vec2(ax, q.y), vec2(0.0, 0.016), vec2(0.014, -0.014));
-		float cb = seg(q, vec2(-0.008, -0.004), vec2(0.008, -0.004));
-		col = mix(col, white, cov(min(la, cb) - 0.0028, w) * hm);
+		vec2 q = vec2(ax, p.y - 1.7475);
+		float la = seg(q, vec2(0.0145, -0.0175), vec2(0.0, 0.0165));
+		float cb = seg(q, vec2(0.0, -0.0085), vec2(0.0082, -0.0085));
+		float aa = cov(min(la, cb) - 0.0030, w) * hm * (1.0 - op);
+		col = mix(col, white, aa);
+		rou = mix(rou, 0.4, aa);
+		hgt = aa * 0.002;
 		// Rand der Haube am Hals
 		col = mix(col, navy, ln(p.y, 1.545, 0.004, w) * 0.5);
 	}
@@ -271,25 +285,39 @@ void iron(vec3 p, float w, out vec3 col, out float met, out float rou, out vec3 
 		emi = cyan * pal * 4.0;
 		met = mix(met, 0.0, pal);
 	}
-	// Kopf: roter Helm, goldene Maske
+	// Kopf: roter Helm, goldene Gesichtsplatte (Relief: hero_face.gd)
 	if (p.y > 1.545 && ax < 0.13) {
 		col = red;
 		line = 0.0;
+		hgt = 0.0;
 		float hm = smoothstep(0.03, 0.07, p.z);
-		float fp = box2(vec2(p.x, p.y - 1.640), vec2(0.036, 0.058)) - 0.016;
-		float mask = cov(fp, w) * hm;
-		col = mix(col, gold, mask);
-		col = mix(col, dark, cov(abs(fp) - 0.0018, w) * hm);
-		// Augenschlitze
-		vec2 eq = vec2(ax - 0.030, p.y - 1.668);
-		float eye = cov(box2(vec2(eq.x + eq.y * 0.9, eq.y), vec2(0.019, 0.0065)), w) * hm;
-		col = mix(col, cyan, eye);
-		emi = cyan * eye * 3.0;
+		float md = ax - mask_w(p.y);
+		float mask = cov(md, w) * hm;
+		// Helmschale: Mittelrippe, Seitenfuge über den Ohren
+		line = max(line, cov(ax - 0.0011, w) * smoothstep(1.74, 1.76, p.y) * (1.0 - cov(md, w) * hm));
+		line = max(line, ln(p.y, 1.735, 0.0011, w) * smoothstep(0.075, 0.095, ax) * 0.8);
+		col = mix(col, gold * (0.92 + 0.16 * vn(vec2(p.y * 700.0, ax * 60.0))), mask);
+		met = mix(met, 0.95, mask);
+		rou = mix(rou, 0.24, mask);
+		// Fuge um die Platte
+		line = max(line, cov(abs(md) - 0.0014, w) * hm);
+		// Augenschlitze (schräg), leuchtend
+		float ex = ax - 0.0275;
+		float ey = p.y - (1.6665 + ex * 0.30);
+		float hh = mix(0.0030, 0.0014, clamp((ex + 0.0165) / 0.033, 0.0, 1.0));
+		float ed = max(abs(ex) - 0.0165, abs(ey) - hh);
+		float eye = cov(ed, w) * hm * mask;
+		line = max(line, cov(ed - 0.0018, w) * hm * mask * (1.0 - eye));
+		col = mix(col, cyan * 0.9, eye);
+		emi = cyan * eye * 2.4;
 		met = mix(met, 0.0, eye);
-		// Mund- und Wangenlinien
-		float mo = cov(seg(p.xy, vec2(-0.018, 1.598), vec2(0.018, 1.598)) - 0.0018, w) * hm;
-		float ch = cov(seg(vec2(ax, p.y), vec2(0.010, 1.628), vec2(0.030, 1.600)) - 0.0015, w) * hm;
-		col = mix(col, dark, max(mo, ch) * 0.8);
+		// Brauenkante, Nasenrücken, Wangenlinien, Mundspalt, Kinn
+		line = max(line, cov(abs(p.y - (1.6835 + ax * 0.12) - 0.0035) - 0.0008, w) * (1.0 - smoothstep(0.040, 0.050, ax)) * mask);
+		line = max(line, cov(abs(ax - mix(0.0075, 0.0044, clamp((1.690 - p.y) / 0.09, 0.0, 1.0))) - 0.0008, w) * smoothstep(1.595, 1.615, p.y) * (1.0 - smoothstep(1.685, 1.695, p.y)) * mask * 0.8);
+		line = max(line, cov(seg(vec2(ax, p.y), vec2(0.0125, 1.628), vec2(0.0300, 1.578)) - 0.0010, w) * mask);
+		line = max(line, cov(abs(p.y - 1.5935) - 0.0010, w) * (1.0 - smoothstep(0.013, 0.019, ax)) * mask);
+		line = max(line, ln(p.y, 1.567, 0.0010, w) * mask);
+		col *= 1.0 - 0.25 * gs(md + 0.002, 0.004) * mask;
 	}
 	if (p.y > 1.5 && p.y < 1.552 && ax < 0.12) {
 		col = dark;
@@ -395,28 +423,34 @@ void thor(vec3 p, float w, out vec3 col, out float met, out float rou, out vec3 
 		col = mix(col, leather, wr);
 		hgt = max(hgt, wr * 0.003);
 	}
-	// Kopf: Haare, Gesicht, Bart
+	// Kopf: Haare, Gesicht, Vollbart (Relief: hero_face.gd; Haare und Bartsträhnen: hero_parts.gd)
 	if (p.y > 1.545 && ax < 0.13) {
-		col = blond;
-		met = 0.0;
-		rou = 0.55;
-		hgt = 0.0;
 		float hm = smoothstep(0.03, 0.07, p.z);
-		float op = cov(box2(vec2(p.x, p.y - 1.655), vec2(0.040, 0.050)) - 0.018, w) * hm;
-		col = mix(col, skin, op);
-		rou = mix(rou, 0.65, op);
-		// Bart: unterer Teil des Gesichts
-		float beard = cov(box2(vec2(p.x, p.y - 1.598), vec2(0.040, 0.020)) - 0.012, w) * hm;
-		float must = cov(seg(vec2(ax, p.y), vec2(0.0, 1.632), vec2(0.026, 1.626)) - 0.004, w) * hm;
-		col = mix(col, lin(vec3(0.62, 0.45, 0.17)), max(beard, must));
-		// Augen und Brauen
-		float eye = cov(box2(vec2(ax - 0.030, p.y - 1.676), vec2(0.009, 0.004)), w);
-		float brow = cov(seg(vec2(ax, p.y), vec2(0.018, 1.692), vec2(0.045, 1.698)) - 0.0035, w);
-		col = mix(col, lin(vec3(0.15, 0.30, 0.55)), eye * hm);
-		col = mix(col, lin(vec3(0.45, 0.32, 0.12)), brow * hm * 0.9);
-		// Mund
-		float mouth = cov(seg(p.xy, vec2(-0.014, 1.618), vec2(0.014, 1.618)) - 0.002, w) * hm;
-		col = mix(col, lin(vec3(0.45, 0.2, 0.15)), mouth);
+		col = blond * (0.72 + 0.5 * vn(vec2(p.x * 380.0, p.y * 26.0 + p.z * 20.0)));
+		met = 0.0;
+		rou = 0.5;
+		hgt = 0.0;
+		float hairline = 1.723 + 0.009 * smoothstep(0.02, 0.055, ax);
+		float sm = (1.0 - smoothstep(hairline - 0.003, hairline + 0.002, p.y)) * (1.0 - smoothstep(0.056, 0.064, ax)) * hm;
+		vec3 fcol = col;
+		float frou = rou;
+		vec3 femi = emi;
+		human_face(p, w, skin, lin(vec3(0.30, 0.50, 0.75)), lin(vec3(0.46, 0.33, 0.13)), lin(vec3(0.62, 0.33, 0.30)), sm, fcol, frou, femi);
+		col = fcol;
+		rou = frou;
+		emi = femi;
+		// Vollbart: Wangen, Kinn, Schnurrbart; der Mund bleibt frei
+		float jt = 1.606 + 0.034 * smoothstep(0.030, 0.060, ax);
+		float inz = (1.0 - smoothstep(jt - 0.003, jt + 0.003, p.y)) * (1.0 - smoothstep(0.056, 0.064, ax));
+		float lipz = (1.0 - smoothstep(0.022, 0.028, ax)) * smoothstep(1.5815, 1.5845, p.y) * (1.0 - smoothstep(1.6075, 1.6105, p.y));
+		float must = (1.0 - smoothstep(0.024, 0.030, ax)) * smoothstep(1.6055, 1.6085, p.y) * (1.0 - smoothstep(1.6195, 1.6215, p.y)) * smoothstep(0.0, 0.003, ax);
+		float bcov = max(inz * (1.0 - lipz), must) * step(1.54, p.y);
+		float bn = vn(p.xy * 330.0);
+		float bm = smoothstep(0.35, 0.65, bcov + (bn - 0.5) * 0.45) * hm;
+		vec3 bcol = lin(vec3(0.56, 0.40, 0.16)) * (0.60 + 0.75 * vn(vec2(p.x * 760.0, p.y * 48.0)));
+		bcol *= 0.85 + 0.3 * smoothstep(1.54, 1.60, p.y);
+		col = mix(col, bcol, bm);
+		rou = mix(rou, 0.7, bm);
 	}
 	if (p.y > 1.5 && p.y < 1.552 && ax < 0.12) {
 		col = skin;

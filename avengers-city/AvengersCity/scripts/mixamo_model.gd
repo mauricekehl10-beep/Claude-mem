@@ -7,9 +7,9 @@ const DIR := "res://Assets/Mixamo/"
 const ANIMS := {
 	"idle": "Breathing Idle", "walk": "Walking", "run": "Running", "jump": "Jump", "land": "Jump",
 	"punch": "Cross Punch", "hammer": "Standing Melee Attack Horizontal",
-	"float": "Floating", "fly": "Flying", "hard": "Jumping Down",
+	"hard": "Jumping Down",
 }
-const LOOPS := ["idle", "walk", "run", "float", "fly"]
+const LOOPS := ["idle", "walk", "run"]
 
 # Ausschnitte aus den Clips (Sekunden im Original): [von, bis, am Ende halten].
 # jump: Hocke -> Absprung -> Luft -> Füße bereit zur Landung (danach bleibt die Pose stehen)
@@ -34,6 +34,7 @@ const GOLD := Color(0.96, 0.74, 0.24)
 const DARK := Color(0.12, 0.13, 0.16)
 const SUIT = preload("res://scripts/hero_suit.gdshader")
 const Parts = preload("res://scripts/hero_parts.gd")
+const Face = preload("res://scripts/hero_face.gd")
 
 static var _cache := {}  # fertig gebaute Netze pro Held
 
@@ -128,7 +129,7 @@ static func _strip_hips_drift(an: Animation) -> void:
 static func _paint(mi: MeshInstance3D, hero: int) -> void:
 	var key := "%d%s" % [hero, mi.name]
 	if not _cache.has(key):
-		_cache[key] = _bake(mi.mesh, hero)
+		_cache[key] = _bake(mi.mesh, hero, "Surface" in mi.name)
 	mi.mesh = _cache[key]
 	var m := ShaderMaterial.new()
 	m.shader = SUIT
@@ -137,8 +138,10 @@ static func _paint(mi: MeshInstance3D, hero: int) -> void:
 	mi.material_override = m
 
 
-static func _bake(src: Mesh, hero: int) -> Mesh:
+static func _bake(src: Mesh, hero: int, face: bool = false) -> Mesh:
 	var arrays := src.surface_get_arrays(0)
+	if face:
+		arrays = Face.refine(arrays)  # Gesichtszone fein unterteilen (hero_face.gd)
 	var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
 	var norms: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL]
 	var n := verts.size()
@@ -158,8 +161,13 @@ static func _bake(src: Mesh, hero: int) -> Mesh:
 		cust[i * 4 + 1] = p.y
 		cust[i * 4 + 2] = p.z
 		var dir: Vector3 = acc[Vector3i((p * 2000.0).round())]
-		verts[i] = p + dir.normalized() * _bulk(hero, p)
+		var fh := Face.height(hero, p) if face else 0.0
+		cust[i * 4 + 3] = fh
+		if fh != 0.0 or (face and p.y > 1.53 and p.z > -0.02):
+			norms[i] = Face.normal(hero, p, norms[i])
+		verts[i] = p + dir.normalized() * (_bulk(hero, p) + fh)
 	arrays[Mesh.ARRAY_VERTEX] = verts
+	arrays[Mesh.ARRAY_NORMAL] = norms
 	arrays[Mesh.ARRAY_CUSTOM0] = cust
 	var flags: int = Mesh.ARRAY_CUSTOM_RGBA_FLOAT << Mesh.ARRAY_FORMAT_CUSTOM0_SHIFT
 	if per > 4:

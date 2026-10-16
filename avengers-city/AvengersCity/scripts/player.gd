@@ -6,6 +6,8 @@ const VFX = preload("res://scripts/vfx.gd")
 const HeroModel = preload("res://scripts/hero_model.gd")
 const MixamoModel = preload("res://scripts/mixamo_model.gd")
 const ArmPose = preload("res://scripts/arm_pose.gd")
+const FlyPose = preload("res://scripts/fly_pose.gd")
+const ShieldThrow = preload("res://scripts/shield_throw.gd")
 
 var HEROES := [
 	{"name": "Captain America", "suit": Color(0.10, 0.26, 0.72), "accent": Color(0.80, 0.10, 0.14), "trim": Color(0.95, 0.95, 0.95), "scale": 1.0},
@@ -22,7 +24,19 @@ const JUMP_ANTIC := 2.4  # Tempo des Hockens vor dem Absprung
 const JUMP_WAIT := 0.12  # so lange dauert das Hocken (Notfall-Zeit, falls die Animation nicht läuft)
 const AIR_DEBOUNCE := 0.08  # so lange in der Luft, bevor die Luft-Animation startet
 const HARD_FALL := 15.0  # ab dieser Fallgeschwindigkeit: harte Landung
-const GROUND_ACCEL := 60.0
+const GROUND_ACCEL := 34.0
+const GROUND_BRAKE := 46.0
+const WALK_V := 5.6  # Lauftempo (Lauf-Clip fast im Originaltempo, die Füsse rutschen kaum)
+const SPRINT_V := 8.6  # Sprint: schneller, aber der Clip läuft nur etwas schneller (sonst wirkt es hektisch)
+
+# Fliegen (Iron Man, Thor): Doppeltipp Leertaste startet und beendet, Strg sinken, Shift Boost
+const FLY_V := [0.0, 19.0, 16.0]  # Reisetempo je Held (Iron Man etwas schneller)
+const FLY_BOOST := 2.1  # Boost-Faktor
+const FLY_CLIMB := 11.0  # Steigen/Sinken mit Leertaste/Strg
+const FLY_HOP := 7.0  # kleiner Hochsprung beim Start vom Boden
+const TAP_WINDOW := 0.3  # so schnell muss der zweite Tipp kommen
+const BASE_FOV := 75.0
+const CAM_POS := Vector3(0.6, 0.3, 5.0)
 
 # Angriffe: Mit "clip" läuft ein Mixamo-Ausschnitt (Treffer-Bild und Dauer kommen aus dem Clip, "speed" = Tempo).
 # Ohne "clip" zeigt ein Arm per Code (arm_pose.gd). hit/len (Sekunden) gelten für diese Code-Angriffe und für die Würfel-Figur.
@@ -30,7 +44,7 @@ const ATK := {
 	"punch": {"clip": "punch", "speed": 2.2, "dmg": 15.0, "reach": 2.4, "arc": 0.3, "hit": 0.05, "len": 0.45},
 	"hammer": {"clip": "hammer", "speed": 2.2, "dmg": 20.0, "reach": 3.2, "arc": 0.0, "hit": 0.05, "len": 0.45},
 	"swing": {"dmg": 20.0, "reach": 3.2, "arc": 0.0, "hit": 0.17, "len": 0.5},
-	"throw": {"hit": 0.22, "len": 0.5},
+	"throw": {"hit": 0.40, "len": 0.62},  # Wurf-Pose und Release macht shield_throw.gd (hit = Notfall-Auslöser)
 	"bolt": {"hit": 0.30, "len": 0.62},
 }
 
@@ -55,12 +69,26 @@ var shield_state := 0  # 0 = am Arm, 1 = fliegt weg, 2 = kommt zurück
 var shield_t := 0.0
 var shield_dir := Vector3.ZERO
 var shield_hit: Array = []
+var st  # Schildwurf von Captain America (shield_throw.gd): Wurf-Pose, Flug, Fangen
 var shots: Array = []
 var shoot_cd := 0.0
 var shoot_hold := 0.0  # Iron Man: so lange bleibt der Arm nach dem letzten Schuss oben
 var bolt_cd := 0.0
-var fly_lock := false
 var flying := false
+var fly_t := 0.0  # Zeit seit dem Start des Flugs
+var tap_t := 9.0  # Zeit seit dem letzten Leertasten-Druck (Doppeltipp)
+var fly_fast := 0.0  # 0 = Schweben, 1 = schneller Flug (Körper waagerecht)
+var fly_boost := 0.0  # 0..1, Boost-Stärke (geglättet)
+var elev := 0.0  # Steigwinkel der Flugrichtung (geglättet)
+var tilt := 0.0  # Schräglage nach vorn/hinten beim langsamen Flug
+var side_tilt := 0.0  # Schräglage zur Seite
+var bank := 0.0  # Kurvenneigung (Rollen um die Körperachse)
+var body_yaw := 0.0  # Blickrichtung der Figur
+var hover_t := 0.0
+var cam_lag := Vector3.ZERO  # Kamera zieht beim Beschleunigen nach
+var cam_vel := Vector3.ZERO
+var cam_dist := 1.0  # Kamera-Abstand (1 = voll, kleiner = wegen Wand nähergerückt)
+var fp: FlyPose  # Flugpose per Code (fly_pose.gd)
 var mx: Dictionary = {}
 var mx_anim: AnimationPlayer
 var mx_cur := ""
@@ -99,7 +127,8 @@ func _ready() -> void:
 	pitch_pivot = Node3D.new()
 	yaw_pivot.add_child(pitch_pivot)
 	cam = Camera3D.new()
-	cam.position = Vector3(0.6, 0.3, 5.0)
+	cam.position = CAM_POS
+	cam.fov = BASE_FOV
 	pitch_pivot.add_child(cam)
 	cam.current = true
 	build_model()
@@ -110,8 +139,14 @@ func hero_name() -> String:
 
 
 func next_hero() -> void:
+	var keep_fly := flying
 	hero = (hero + 1) % HEROES.size()
 	build_model()
+	if keep_fly and (hero == 1 or hero == 2):
+		flying = true  # Iron Man <-> Thor: der Flug geht weiter
+		fly_t = 0.5
+		if fp:
+			fp.weight = 1.0
 
 
 func set_active(on: bool) -> void:
@@ -125,6 +160,8 @@ func set_active(on: bool) -> void:
 
 # Angriff, Sprung und Landung abbrechen (Heldenwechsel, Auto, Neustart)
 func reset_states() -> void:
+	if st and is_instance_valid(st):
+		st.cancel()
 	atk = ""
 	atk_next = ""
 	jump_t = -1.0
@@ -135,9 +172,24 @@ func reset_states() -> void:
 	shoot_hold = 0.0
 	punch_t = 0.0
 	was_floor = true
+	flying = false
+	fly_fast = 0.0
+	fly_boost = 0.0
+	tilt = 0.0
+	side_tilt = 0.0
+	bank = 0.0
+	elev = 0.0
+	tap_t = 9.0
+	cam_lag = Vector3.ZERO
+	cam_vel = Vector3.ZERO
+	if fp:
+		fp.weight = 0.0
+		fp.fast = 0.0
 
 
 func build_model() -> void:
+	if st and is_instance_valid(st):
+		st.cancel()
 	if model:
 		model.queue_free()
 	model = Node3D.new()
@@ -150,8 +202,11 @@ func build_model() -> void:
 	mx_anim = null
 	mx_cur = ""
 	aim = null
+	fp = null
+	st = null
 	rep_mat = null
 	rep_light = null
+	body_yaw = yaw
 	reset_states()
 
 	# Captain America nutzt das geladene Modell, wenn es vorhanden ist.
@@ -185,7 +240,7 @@ func build_model() -> void:
 
 
 func face_camera() -> void:
-	model.rotation.y = yaw
+	body_yaw = yaw
 
 
 # Iron Man schießt aus der Hand (Zielpose: Arm zeigt zum Fadenkreuz-Punkt)
@@ -246,7 +301,7 @@ func update_shots(delta: float) -> void:
 
 
 func facing() -> Vector3:
-	return -model.global_transform.basis.z
+	return Vector3(-sin(body_yaw), 0.0, -cos(body_yaw))
 
 
 func hurt() -> void:
@@ -270,7 +325,7 @@ func clip_attack() -> bool:
 
 func can_attack(kind: String) -> bool:
 	if kind == "throw":
-		return shield_state == 0
+		return shield_state == 0 and st != null and st.ready()
 	if kind == "bolt":
 		return bolt_cd <= 0.0
 	return true
@@ -396,58 +451,23 @@ func lightning() -> void:
 	VFX.lightning_bolt(get_parent(), spot)
 
 
+# Schildwurf: Pose, Release, Flug (Abpraller) und Fangen laufen in shield_throw.gd.
+# Das Schild löst sich dort im Release-Bild der Wurf-Pose; hier nur der Notfall-Auslöser (Zeit aus ATK).
 func throw_shield() -> void:
-	shield_state = 1
-	shield_t = 0.0
-	shield_hit.clear()
-	shield_dir = -yaw_pivot.global_transform.basis.z
-	shield_dir.y = 0.0
-	shield_dir = shield_dir.normalized()
-	if arm_shield:
-		arm_shield.visible = false
-	shield = Node3D.new()
-	MixamoModel.flat_shield(shield)  # gleiches Aussehen wie am Arm
-	get_parent().add_child(shield)
-	# Der Schild startet in der Hand, die ihn wirft
-	var from := global_position + Vector3(0, 1.3, 0) + shield_dir
-	if aim:
-		from = aim.hand_pos() + shield_dir * 0.3
-	shield.global_position = from
-	VFX.shield_trail(shield)
+	if st:
+		st.force_release()
 
 
-func update_shield(delta: float) -> void:
-	shield_t += delta
-	var chest := global_position + Vector3(0, 1.3, 0)
-	if shield_state == 1:
-		shield.global_position += shield_dir * 22.0 * delta
-		if shield_t > 0.6:
-			shield_state = 2
-			shield_hit.clear()
-	else:
-		var to := chest - shield.global_position
-		if to.length() < 1.0:
-			shield.queue_free()
-			shield_state = 0
-			if arm_shield:
-				arm_shield.visible = true
-			return
-		shield.global_position += to.normalized() * 26.0 * delta
-	shield.rotate_y(18.0 * delta)
-	for e in get_tree().get_nodes_in_group("enemies"):
-		if e in shield_hit:
-			continue
-		if (e.global_position + Vector3(0, 1.0, 0)).distance_to(shield.global_position) < 1.5:
-			shield_hit.append(e)
-			e.hit(25.0, shield.global_position)
-			VFX.shield_impact(get_parent(), shield.global_position)
+# Der Flug läuft in shield_throw.gd (jedes Bild, nicht nur pro Physik-Schritt)
+func update_shield(_delta: float) -> void:
+	pass
 
 
 func _unhandled_input(event: InputEvent) -> void:
 	var mm := event as InputEventMouseMotion
 	if active and mm and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		yaw -= mm.relative.x * 0.0025
-		pitch = clamp(pitch - mm.relative.y * 0.0025, -1.1, 0.5)
+		pitch = clamp(pitch - mm.relative.y * 0.0025, -1.1, 1.2 if flying else 0.5)  # im Flug darf man steil nach oben schauen
 
 
 # Körper dreht sich: beim Angriff (und beim Zielen im Stehen) zur Kamera, sonst in Laufrichtung
@@ -455,9 +475,9 @@ func turn_model(delta: float, dir: Vector3) -> void:
 	var slow := Vector2(velocity.x, velocity.z).length() < 1.5
 	var to_cam := atk != "" or (hero == 1 and shoot_hold > 0.0 and (flying or slow))
 	if to_cam:
-		model.rotation.y = lerp_angle(model.rotation.y, yaw, clampf(25.0 * delta, 0.0, 1.0))
+		body_yaw = lerp_angle(body_yaw, yaw, clampf(25.0 * delta, 0.0, 1.0))
 	elif dir.length() > 0.05:
-		model.rotation.y = lerp_angle(model.rotation.y, atan2(-dir.x, -dir.z), clampf(12.0 * delta, 0.0, 1.0))
+		body_yaw = lerp_angle(body_yaw, atan2(-dir.x, -dir.z), clampf(12.0 * delta, 0.0, 1.0))
 
 
 func launch() -> void:
@@ -485,6 +505,8 @@ func _physics_process(delta: float) -> void:
 	pitch_pivot.rotation.x = pitch
 	if not active:
 		return
+	if not flying and pitch > 0.5:
+		pitch = move_toward(pitch, 0.5, 2.0 * delta)  # nach dem Flug: Blick nach oben wieder begrenzen
 	punch_t = maxf(punch_t - delta, 0.0)
 	land_t = maxf(land_t - delta, 0.0)
 	hard_t = maxf(hard_t - delta, 0.0)
@@ -519,35 +541,31 @@ func _physics_process(delta: float) -> void:
 	if not shots.is_empty():
 		update_shots(delta)
 
-	# Iron Man: Leertaste in der Luft = schweben, WASD fliegt in Blickrichtung.
-	# Nach der Landung (Boden, Dach) muss die Leertaste erst losgelassen werden.
-	if is_on_floor() or not Input.is_action_pressed("jump"):
-		fly_lock = is_on_floor() and Input.is_action_pressed("jump")
-	flying = (hero == 1 or hero == 2) and not is_on_floor() and not fly_lock and Input.is_action_pressed("jump")
-	if flying:
-		jump_t = -1.0
-		var fi := Input.get_vector("move_left", "move_right", "move_forward", "move_back")
-		var fdir: Vector3 = cam.global_transform.basis * Vector3(fi.x, 0.0, fi.y)
-		var fspd := 24.0 if Input.is_action_pressed("sprint") else 14.0
-		var want := fdir.normalized() * fspd if fi.length() > 0.05 else Vector3.ZERO
-		if Input.is_action_pressed("descend"):
-			want.y = -8.0
-		velocity = velocity.move_toward(want, 50.0 * delta)
-		if fi.length() > 0.05:
-			turn_model(delta, fdir)
+	# Fliegen (Iron Man, Thor): Doppeltipp Leertaste startet und beendet. Der Boden beendet es auch (Landung).
+	tap_t += delta
+	if (hero == 1 or hero == 2) and Input.is_action_just_pressed("jump"):
+		if tap_t < TAP_WINDOW:
+			tap_t = 9.0
+			if flying:
+				stop_fly()
+			else:
+				start_fly()
 		else:
-			turn_model(delta, Vector3.ZERO)
-		last_vy = velocity.y
-		move_and_slide()
-		animate(delta)
-		return
+			tap_t = 0.0
+	if flying:
+		fly_t += delta
+		if is_on_floor() and fly_t > 0.3 and not Input.is_action_pressed("jump"):
+			land_from_fly()
+		else:
+			fly_move(delta)
+			return
 	if not is_on_floor():
-		velocity.y -= GRAVITY * delta
+		velocity.y = maxf(velocity.y - GRAVITY * delta, -45.0)  # Fallgeschwindigkeit ist begrenzt
 
 	var inp := Input.get_vector("move_left", "move_right", "move_forward", "move_back")
 	var dir: Vector3 = yaw_pivot.global_transform.basis * Vector3(inp.x, 0.0, inp.y)
 	dir.y = 0.0
-	var spd := 10.0 if Input.is_action_pressed("sprint") else 6.0
+	var spd := SPRINT_V if Input.is_action_pressed("sprint") else WALK_V
 	# Schlag-Clips und harte Landungen bremsen am Boden
 	if is_on_floor() and (hard_t > 0.0 or clip_attack()):
 		spd *= 0.3
@@ -563,8 +581,9 @@ func _physics_process(delta: float) -> void:
 			velocity.x = wantv.x
 			velocity.z = wantv.y
 	else:
-		velocity.x = move_toward(velocity.x, 0.0, 60.0 * delta)
-		velocity.z = move_toward(velocity.z, 0.0, 60.0 * delta)
+		var br := GROUND_BRAKE if is_on_floor() else 60.0
+		velocity.x = move_toward(velocity.x, 0.0, br * delta)
+		velocity.z = move_toward(velocity.z, 0.0, br * delta)
 	turn_model(delta, dir)
 
 	# Sprung: erst kurz in die Hocke (Animation), Absprung genau im Absprung-Bild des Clips
@@ -585,22 +604,179 @@ func _physics_process(delta: float) -> void:
 			launch()
 	last_vy = velocity.y
 	move_and_slide()
+	update_camera(delta)
 	animate(delta)
+
+
+# ---------- Fliegen ----------
+
+func start_fly() -> void:
+	flying = true
+	fly_t = 0.0
+	jump_t = -1.0
+	land_t = 0.0
+	hard_t = 0.0
+	if is_on_floor() or velocity.y < FLY_HOP:
+		velocity.y = maxf(velocity.y, FLY_HOP)  # kleiner Hochsprung, auch vom Boden aus
+
+
+func stop_fly() -> void:
+	flying = false  # die Figur fällt aus dem Flug (Fallpose), Doppeltipp in der Luft startet wieder
+
+
+# Boden berührt: Fliegen aus, zu schnelles Tempo wird sanft abgebaut (die Landeanimation startet über landed())
+func land_from_fly() -> void:
+	flying = false
+	var hv := Vector2(velocity.x, velocity.z)
+	if hv.length() > SPRINT_V:
+		hv = hv.normalized() * SPRINT_V
+		velocity.x = hv.x
+		velocity.z = hv.y
+
+
+# Flug: W/S in Blickrichtung der Kamera (mit Neigung), A/D seitlich, Leertaste steigen, Strg sinken, Shift Boost.
+# Das Tempo folgt dem Wunschtempo mit Trägheit: sanft anfahren, sanft abbremsen.
+func fly_move(delta: float) -> void:
+	jump_t = -1.0
+	var fi := Input.get_vector("move_left", "move_right", "move_forward", "move_back")
+	var cb := cam.global_transform.basis
+	var fwd3: Vector3 = -cb.z
+	var right := Vector3(cb.x.x, 0.0, cb.x.z).normalized()
+	var boost_key := Input.is_action_pressed("sprint")
+	var dir: Vector3 = fwd3 * -fi.y + right * fi.x
+	if boost_key and dir.length() < 0.05:
+		dir = fwd3  # nur Shift: geradeaus in Blickrichtung
+	var want := Vector3.ZERO
+	if dir.length() > 0.05:
+		want = dir.normalized() * float(FLY_V[hero]) * (FLY_BOOST if boost_key else 1.0)
+	var climb := 0.0
+	if Input.is_action_pressed("jump"):
+		climb += 1.0
+	if Input.is_action_pressed("descend"):
+		climb -= 1.0
+	want.y += climb * FLY_CLIMB
+	var rate := 2.3 if want.length() > 0.5 else 2.7
+	if boost_key:
+		rate = 3.2
+	var k := 1.0 - exp(-rate * delta)
+	var nv := velocity.lerp(want, k)
+	if velocity.length() > 2.0 and want.length() > 2.0 and velocity.dot(want) > 0.0:
+		# Kurve: Tempo bleibt erhalten, nur die Richtung dreht (sonst würde das Tempo in Kurven einbrechen)
+		nv = nv.normalized() * lerpf(velocity.length(), want.length(), k)
+	velocity = nv
+	if want == Vector3.ZERO and velocity.length() < 0.15:
+		velocity = Vector3.ZERO
+	# Absturz-Sicherheit: dicht über dem Boden wird das Sinken weich abgebremst (kein Aufschlag)
+	if velocity.y < -1.0:
+		var q := PhysicsRayQueryParameters3D.create(global_position + Vector3(0, 0.3, 0), global_position + Vector3(0, -40.0, 0))
+		q.exclude = [get_rid()]
+		var r := get_world_3d().direct_space_state.intersect_ray(q)
+		if r:
+			var gd: float = global_position.y - float(r["position"].y)
+			velocity.y = maxf(velocity.y, -(1.5 + gd * 2.4))
+	# Spielfeldgrenzen: nicht ins Weltall, nicht von der Karte
+	var gp := global_position
+	if gp.y > 420.0 and velocity.y > 0.0:
+		velocity.y = 0.0
+	if absf(gp.x) > 1100.0 and signf(velocity.x) == signf(gp.x):
+		velocity.x = 0.0
+	if absf(gp.z) > 1100.0 and signf(velocity.z) == signf(gp.z):
+		velocity.z = 0.0
+	# Körper dreht sich weich zur Kamerarichtung
+	body_yaw = lerp_angle(body_yaw, yaw, 1.0 - exp(-7.0 * delta))
+	last_vy = velocity.y
+	move_and_slide()
+	update_camera(delta)
+	animate(delta)
+
+
+# Körperhaltung: Neigung, Kurvenneigung, Drehung. Im Flug folgt der Körper der Flugrichtung, am Boden lehnt er sich im Sprint nach vorn.
+func update_body(delta: float) -> void:
+	var vel := velocity
+	var vh := Vector3(vel.x, 0.0, vel.z)
+	var face := Vector3(-sin(body_yaw), 0.0, -cos(body_yaw))
+	var rgt := Vector3(cos(body_yaw), 0.0, -sin(body_yaw))
+	var fast_t := 0.0
+	var elev_t := 0.0
+	var tilt_t := 0.0
+	var side_t := 0.0
+	var bank_t := 0.0
+	if flying:
+		var sp := vel.length()
+		var fwd3: Vector3 = -cam.global_transform.basis.z
+		fast_t = smoothstep(3.0, 13.0, maxf(vel.dot(fwd3), 0.0))
+		if atk == "swing" or atk == "bolt":
+			fast_t = minf(fast_t, 0.1)  # beim Hammerschlag/Blitz richtet sich die Figur auf
+		if sp > 3.0:
+			elev_t = asin(clampf(vel.y / sp, -1.0, 1.0))
+		tilt_t = clampf(vh.dot(face) / 12.0, -1.0, 1.0) * 0.32
+		side_t = clampf(vh.dot(rgt) / 12.0, -1.0, 1.0) * 0.32
+		var err := angle_difference(body_yaw, yaw)  # > 0: Kamera ist links vom Körper
+		bank_t = clampf(-err * 2.4 + Input.get_axis("move_left", "move_right") * 0.4, -0.75, 0.75)  # + = nach rechts rollen
+	elif is_on_floor():
+		tilt_t = 0.14 * smoothstep(5.6, 8.4, vh.length())
+	fly_fast = lerpf(fly_fast, fast_t, 1.0 - exp(-4.5 * delta))
+	var k5 := 1.0 - exp(-5.0 * delta)
+	elev = lerpf(elev, elev_t, k5)
+	tilt = lerpf(tilt, tilt_t, k5)
+	side_tilt = lerpf(side_tilt, side_t, k5)
+	bank = lerpf(bank, bank_t, 1.0 - exp(-6.0 * delta))
+	var lam := fly_fast * (PI * 0.5 - elev) + tilt * (1.0 - fly_fast)  # Neigung des Körpers nach vorn
+	var hover := 0.0
+	if fp:
+		fp.weight = move_toward(fp.weight, 1.0 if flying else 0.0, 4.0 * delta)
+		fp.fast = fly_fast
+		fp.t = hover_t
+		hover = fp.weight * (1.0 - fly_fast)
+	lam += sin(hover_t * 1.1) * 0.03 * hover  # Schweben: ganz leichtes Neigen
+	var sc: float = HEROES[hero]["scale"]
+	var rot := Basis(Vector3.UP, body_yaw) * Basis(Vector3.RIGHT, -lam)
+	rot = rot * Basis(Vector3(0, 0, 1), -side_tilt * (1.0 - fly_fast)) * Basis(Vector3.UP, bank * fly_fast)
+	model.basis = rot * Basis.from_scale(Vector3.ONE * sc)
+	# Drehpunkt in Hüfthöhe statt an den Füssen; beim Schweben sanft auf und ab
+	var pv := Vector3(0, sc, 0)
+	model.position = pv - rot * pv + Vector3(0, sin(hover_t * 1.7) * 0.05 * hover, 0)
+
+
+# Kamera: Sichtfeld weitet sich mit dem Tempo, zieht beim Beschleunigen nach, wackelt beim Boost, weicht Wänden aus
+func update_camera(delta: float) -> void:
+	var vh := Vector2(velocity.x, velocity.z).length()
+	var sk := 0.0
+	if flying:
+		sk = clampf((velocity.length() - 4.0) / 36.0, 0.0, 1.0)
+	else:
+		sk = 0.15 * smoothstep(5.6, 8.4, vh)
+	fly_boost = lerpf(fly_boost, 1.0 if (flying and Input.is_action_pressed("sprint")) else 0.0, 1.0 - exp(-3.0 * delta))
+	cam.fov = lerpf(cam.fov, BASE_FOV + 17.0 * sk + 3.0 * fly_boost, 1.0 - exp(-4.0 * delta))
+	cam_vel = cam_vel.lerp(velocity, 1.0 - exp(-3.5 * delta))
+	var lag_w := ((cam_vel - velocity) * 0.06).limit_length(1.6)
+	var lag := pitch_pivot.global_transform.basis.inverse() * lag_w
+	cam_lag = cam_lag.lerp(lag, 1.0 - exp(-10.0 * delta))
+	var want := Vector3(CAM_POS.x, CAM_POS.y, CAM_POS.z * (1.0 + 0.16 * sk)) + cam_lag
+	# Wand zwischen Kopf und Kamera: Kamera rückt heran (schnell), danach wieder zurück (langsam)
+	var origin := pitch_pivot.global_position
+	var target_w: Vector3 = pitch_pivot.global_transform * want
+	var ex: Array = [get_rid()]
+	for e in get_tree().get_nodes_in_group("enemies"):
+		ex.append(e.get_rid())
+	var q := PhysicsRayQueryParameters3D.create(origin, target_w)
+	q.exclude = ex
+	var hit := get_world_3d().direct_space_state.intersect_ray(q)
+	var ratio := 1.0
+	if hit:
+		ratio = clampf((origin.distance_to(hit["position"]) - 0.4) / maxf(origin.distance_to(target_w), 0.01), 0.1, 1.0)
+	cam_dist = ratio if ratio < cam_dist else lerpf(cam_dist, ratio, 1.0 - exp(-2.5 * delta))
+	cam.position = want * cam_dist
+	var sh := fly_boost * 0.03
+	cam.h_offset = (sin(hover_t * 37.0) + 0.6 * sin(hover_t * 23.0 + 1.0)) * sh
+	cam.v_offset = sin(hover_t * 31.0 + 2.0) * sh
 
 
 func animate(delta: float) -> void:
 	update_arm(delta)
-	# Flugpose: nach vorne gelehnt, Arme nach vorn, Beine gestreckt
-	var lean := 0.0
-	if flying and mx_anim:
-		# Der Flug-Clip liegt schon waagerecht: nur beim Steigen/Sinken leicht neigen
-		lean = clampf(velocity.y / 14.0, -1.0, 1.0) * 0.5
-	elif flying:
-		lean = (-1.2 if hero == 1 else -0.9) * clampf(velocity.length() / 14.0, 0.0, 1.0)
-	model.rotation.x = lerpf(model.rotation.x, lean, clampf(8.0 * delta, 0.0, 1.0))
-	# Drehpunkt in Hüfthöhe statt an den Füßen
-	var c := Vector3(0, 1.0, 0)
-	model.position = Basis(Vector3.UP, model.rotation.y) * (c - Basis(Vector3.RIGHT, model.rotation.x) * c)
+	hover_t += delta
+	update_body(delta)
+	var lean := -(fly_fast * (PI * 0.5 - elev))  # nur für die Würfel-Figur (ohne Mixamo)
 	if mx_anim:
 		animate_mx(delta)
 		return
@@ -645,15 +821,23 @@ func build_mixamo(h: Dictionary) -> void:
 	mx_anim.play("h/idle")
 	mx_cur = "idle"
 	mx_anim.advance(0.0)  # gleich die Idle-Pose zeigen (nicht ein Bild lang die T-Pose)
+	if hero != 0:
+		fp = FlyPose.new(mx["skel"], hero)
+		mx_anim.mixer_applied.connect(fp.apply)  # Flugpose (vor dem Arm-Posing, damit Zielen und Schlagen sie überschreiben)
 	aim = ArmPose.new(mx["skel"], "Left" if hero == 0 else "Right")
 	mx_anim.mixer_applied.connect(aim.apply)  # Arm-Posing läuft direkt nach der Animation
 	if hero == 0:
 		arm_shield = MixamoModel.arm_shield(mx)  # Schild-Aussehen: hero_parts.gd
 		arm_shield.visible = shield_state == 0
+		st = ShieldThrow.new()  # Wurf-Pose, Flug, Fangen
+		st.setup(self, mx["skel"], arm_shield)
+		model.add_child(st)
+		mx_anim.mixer_applied.connect(st.apply)  # Pose läuft direkt nach der Animation (nach dem Arm-Posing)
 	elif hero == 1:
 		# Repulsor in der Handfläche (Knochen: +Y zu den Fingern, +Z aus der Handfläche)
 		rep_mat = U.glow(Color(0.6, 0.95, 1.0), 1.0)
 		U.sphere(mx["rhand"], 0.05, Vector3(0, 0.08, 0.035), rep_mat)
+		U.sphere(mx["lhand"], 0.05, Vector3(0, 0.08, 0.035), rep_mat)  # beim Schweben leuchten beide Handflächen
 		rep_light = OmniLight3D.new()
 		rep_light.light_color = Color(0.6, 0.95, 1.0)
 		rep_light.omni_range = 4.0
@@ -675,12 +859,12 @@ func update_arm(delta: float) -> void:
 		if w > 0.0:
 			aim.point = aim_target()
 			aim.palm = true
-		var glow := flash + w * 0.4
+		var glow := flash + w * 0.4 + (0.8 if flying else 0.0)  # Repulsoren leuchten im Flug
 		if rep_mat:
 			rep_mat.emission_energy_multiplier = 0.6 + glow * 3.0
 		if rep_light:
 			rep_light.light_energy = glow * 0.8
-	elif atk == "throw" or atk == "bolt" or atk == "swing":
+	elif atk == "bolt" or atk == "swing":  # Captains Wurf macht shield_throw.gd
 		var pose := arm_timeline(atk, atk_t)
 		w = pose["w"]
 		tw = pose["twist"] * w
@@ -736,8 +920,7 @@ func animate_mx(delta: float) -> void:
 		spd = ATK[atk]["speed"]
 		blend = 0.05
 	elif flying:
-		# Hysterese: schnell fliegen ab 4,5 m/s, zurück zum Schweben unter 2,5 m/s
-		want = "fly" if sp > (2.5 if mx_cur == "fly" else 4.5) else "float"
+		want = "idle"  # nur Unterlage für Finger; Rumpf, Arme und Beine setzt die Flugpose (fly_pose.gd)
 		blend = 0.3
 	elif jump_t >= 0.0:
 		want = "jump"
@@ -766,11 +949,12 @@ func animate_mx(delta: float) -> void:
 			want = "idle"
 		elif sp > (3.0 if cur == "run" else 3.4):
 			want = "run"
-			spd = clampf(sp / MixamoModel.RUN_SPEED, 0.5, 2.2)
+			# Schrittfrequenz wächst langsamer als das Tempo (Sprint = längere Schritte, nicht nur schneller): 5,6 m/s = 1,0x, 8,6 m/s = 1,3x
+			spd = clampf(pow(sp / MixamoModel.RUN_SPEED, 0.62), 0.6, 1.45)
 			from = 0.17  # nach der Landung zuerst der linke Fuß (er setzt im Sprung-Clip zuerst auf)
 		else:
 			want = "walk"
-			spd = clampf(sp / MixamoModel.WALK_SPEED, 0.5, 2.2)
+			spd = clampf(sp / MixamoModel.WALK_SPEED, 0.5, 1.9)
 			from = 0.30
 	play_mx(want, blend, spd, from, loco, delta)
 

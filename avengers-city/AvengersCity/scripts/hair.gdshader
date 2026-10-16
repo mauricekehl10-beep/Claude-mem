@@ -1,21 +1,31 @@
 shader_type spatial;
-// Haare: Strähnen als Streifen entlang der Längsachse des Teils (Mesh-Y).
+render_mode cull_disabled, alpha_to_coverage;
+// Haar: Strähnen-Bänder (UV.x quer, UV.y entlang 0 Wurzel .. 1 Spitze, COLOR = Strähnenfarbe), sanftes Wiegen, Licht durch die Haare.
 
-uniform vec3 base : source_color = vec3(0.86, 0.66, 0.26);
-
-varying vec3 lp;
+uniform float sway = 1.0;
 
 void vertex() {
-	lp = VERTEX;
+	float s = UV.y;
+	VERTEX.x += sin(TIME * 1.5 + VERTEX.y * 17.0 + VERTEX.z * 9.0) * 0.0022 * s * s * sway;
+	VERTEX.z += cos(TIME * 1.2 + VERTEX.x * 21.0) * 0.0018 * s * s * sway;
 }
 
 void fragment() {
-	float a = atan(lp.x, lp.z);
-	float s = sin(a * 14.0 + lp.y * 5.0) * 0.5 + 0.5;
-	float s2 = sin(a * 37.0 - lp.y * 9.0) * 0.5 + 0.5;
-	float k = 0.62 + 0.34 * s + 0.12 * s2;
-	ALBEDO = base * k;
-	ROUGHNESS = 0.45;
+	float u = UV.x;
+	float s = UV.y;
+	float edge = 1.0 - abs(u * 2.0 - 1.0);
+	float strands = 0.5 + 0.5 * sin(u * 52.0 + COLOR.r * 70.0) * sin(u * 23.0 + COLOR.g * 40.0);
+	float tipcut = smoothstep(0.35, 1.0, s);
+	ALPHA = smoothstep(0.0, 0.45, edge) * (1.0 - smoothstep(0.85, 1.0, s)) * mix(1.0, smoothstep(0.1, 0.55, strands + (1.0 - tipcut) * 0.5), tipcut);
+	// feine Haarlinien entlang der Strähne, Wurzel dunkler, Spitzen heller
+	float line = 0.80 + 0.20 * sin(u * 46.0 + COLOR.r * 90.0) + 0.08 * sin(u * 113.0 + s * 3.0);
+	vec3 base = pow(COLOR.rgb, vec3(2.2));
+	float tone = mix(0.55, 1.15, smoothstep(0.0, 0.45, s)) * mix(1.0, 1.08, s);
+	ALBEDO = base * tone * line;
+	ROUGHNESS = 0.42;
+	SPECULAR = 0.65;
 	METALLIC = 0.0;
-	SPECULAR = 0.6;
+	BACKLIGHT = ALBEDO * 0.45;
+	RIM = 0.25;
+	RIM_TINT = 0.6;
 }

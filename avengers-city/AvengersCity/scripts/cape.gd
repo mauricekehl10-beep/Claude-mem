@@ -45,7 +45,10 @@ func _process(delta: float) -> void:
 	# Fahrtwind: gegen die Bewegung, dazu etwas Schwerkraft
 	var target := (-v + Vector3.DOWN * 4.0).normalized()
 	wind = wind.lerp(target, 1.0 - exp(-6.0 * delta)).normalized()
-	flare = lerpf(flare, clampf(v.length() / 10.0, 0.0, 1.0), 1.0 - exp(-5.0 * delta))
+	var fl_t := clampf(v.length() / 10.0, 0.0, 1.0)
+	if player != null and bool(player.get("flying")):
+		fl_t = maxf(fl_t, 0.3)  # Schweben: der Umhang weht leicht
+	flare = lerpf(flare, fl_t, 1.0 - exp(-5.0 * delta))
 	_rebuild((global_transform.basis.inverse() * wind).normalized())
 
 

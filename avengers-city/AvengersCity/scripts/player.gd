@@ -2,6 +2,7 @@ extends CharacterBody3D
 # Spielfigur: laufen, sprinten, springen, Heldenwechsel. Die Figuren bestehen aus einfachen Formen.
 
 const U = preload("res://scripts/util.gd")
+const VFX = preload("res://scripts/vfx.gd")
 const HeroModel = preload("res://scripts/hero_model.gd")
 const MixamoModel = preload("res://scripts/mixamo_model.gd")
 const ArmPose = preload("res://scripts/arm_pose.gd")
@@ -204,8 +205,7 @@ func shoot() -> void:
 	if dir.dot(cam_fwd) < 0.5:
 		dir = cam_fwd  # Ziel ist hinter oder neben der Hand: einfach geradeaus
 	origin += dir * 0.2
-	var b := U.sphere(self, 0.14, Vector3.ZERO, U.glow(Color(0.6, 0.95, 1.0), 4.0))
-	b.reparent(get_parent())
+	var b: Node3D = VFX.repulsor_shot(get_parent())
 	b.global_position = origin
 	shots.append({"node": b, "dir": dir, "t": 0.0, "fresh": true})
 
@@ -233,6 +233,7 @@ func update_shots(delta: float) -> void:
 		q.exclude = [get_rid()]
 		var r := space.intersect_ray(q)
 		if r:
+			VFX.impact(get_parent(), r["position"], r["normal"])
 			if r["collider"].is_in_group("enemies"):
 				r["collider"].hit(12.0, from)
 			b.queue_free()
@@ -371,6 +372,8 @@ func hit_enemies(dmg: float, reach: float, arc: float) -> void:
 		to.y = 0.0
 		if to.length() < reach and to.normalized().dot(fwd) > arc:
 			e.hit(dmg, global_position)
+			if hero == 2:
+				VFX.hammer_impact(get_parent(), e.global_position + Vector3(0, 1.0, 0))
 
 
 # Thor: Blitz auf den Gegner, der am besten im Blickfeld liegt (oder auf einen Punkt vor ihm)
@@ -390,10 +393,7 @@ func lightning() -> void:
 	for e in get_tree().get_nodes_in_group("enemies"):
 		if e.global_position.distance_to(spot) < 3.5:
 			e.hit(35.0, spot)
-	var b := U.cyl(self, 0.18, 40.0, Vector3.ZERO, U.glow(Color(0.7, 0.85, 1.0), 6.0))
-	b.reparent(get_parent())
-	b.global_position = spot + Vector3(0, 20, 0)
-	get_tree().create_timer(0.25).timeout.connect(b.queue_free)
+	VFX.lightning_bolt(get_parent(), spot)
 
 
 func throw_shield() -> void:
@@ -413,6 +413,7 @@ func throw_shield() -> void:
 	if aim:
 		from = aim.hand_pos() + shield_dir * 0.3
 	shield.global_position = from
+	VFX.shield_trail(shield)
 
 
 func update_shield(delta: float) -> void:
@@ -439,6 +440,7 @@ func update_shield(delta: float) -> void:
 		if (e.global_position + Vector3(0, 1.0, 0)).distance_to(shield.global_position) < 1.5:
 			shield_hit.append(e)
 			e.hit(25.0, shield.global_position)
+			VFX.shield_impact(get_parent(), shield.global_position)
 
 
 func _unhandled_input(event: InputEvent) -> void:

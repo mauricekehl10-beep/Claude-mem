@@ -9,6 +9,9 @@ const HAIR_SHADER = preload("res://scripts/hair.gdshader")
 const Cape = preload("res://scripts/cape.gd")
 const Hair = preload("res://scripts/hero_hair.gd")
 const IronFx = preload("res://scripts/iron_fx.gd")
+const ThorSuit = preload("res://scripts/thor_suit.gd")
+const IronSuit = preload("res://scripts/ironman_suit.gd")
+const CapSuit = preload("res://scripts/captain_suit.gd")
 
 const GOLD := Color(0.88, 0.58, 0.14)
 const RED := Color(0.66, 0.035, 0.05)
@@ -101,46 +104,15 @@ static func frame(y: Vector3, z: Vector3) -> Basis:
 # ---------------------------------------------------------------- Captain America
 
 static func cap(skel: Skeleton3D) -> void:
-	var white := U.mat(Color(0.95, 0.95, 0.96), 0.35, 0.2)
-	var skin := U.mat(SKIN, 0.65)
-	var brown := U.mat(Color(0.30, 0.16, 0.08), 0.65)
-	var silver := metal(Color(0.72, 0.72, 0.68), 0.3, 0.9)
-	var H := "mixamorig_Head"
-	# Nase
-	put(skel, H, m_sphere(), skin, xf(Vector3(0, 1.645, 0.128), Vector3.ZERO, Vector3(0.010, 0.014, 0.013)))
-	# weisse Flügel seitlich an der Haube
-	for s in [-1.0, 1.0]:
-		for i in range(4):
-			var fl := 0.07 - i * 0.012
-			put(skel, H, m_box(Vector3(0.005, fl, 0.03)), white,
-				xf(Vector3(s * 0.087, 1.715 + i * 0.01, 0.02 - i * 0.03), Vector3(-30.0 - i * 14.0, 0, -s * 8.0)))
-	# Gürteltaschen (vorn links/rechts, hinten Mitte)
-	var Hp := "mixamorig_Hips"
-	for s in [-1.0, 1.0]:
-		put(skel, Hp, m_box(Vector3(0.05, 0.06, 0.035)), brown, xf(Vector3(s * 0.1, 1.035, 0.152), Vector3(0, s * -14.0, 0)))
-		put(skel, Hp, m_cyl(0.007, 0.007, 0.006), silver, xf(Vector3(s * 0.1, 1.045, 0.172), Vector3(90, 0, 0)))
-	put(skel, Hp, m_box(Vector3(0.09, 0.06, 0.035)), brown, xf(Vector3(0, 1.03, -0.185)))
+	# Helm-Klappen, Kinnriemen, Kragen, Polster, Gürtel mit Taschen, Stulpen, Stiefel: captain_suit.gd
+	CapSuit.build(skel)
 
 
 # ---------------------------------------------------------------- Iron Man
 
 static func iron(skel: Skeleton3D) -> void:
-	var red := metal(RED, 0.26, 0.85)
-	var gold := metal(GOLD, 0.22, 0.95)
-	var cyan := U.glow(Color(0.65, 0.95, 1.0), 2.2)
-	var H := "mixamorig_Head"
-	# Schulterpanzer
-	for s in [-1.0, 1.0]:
-		var b := "mixamorig_LeftArm" if s > 0.0 else "mixamorig_RightArm"
-		put(skel, b, m_half(0.1), red, xf(Vector3(s * 0.235, 1.455, -0.045), Vector3(0, 0, -s * 25.0), Vector3(1.0, 0.8, 1.2)))
-		put(skel, b, m_cyl(0.104, 0.104, 0.012), gold, xf(Vector3(s * 0.235, 1.455, -0.045), Vector3(0, 0, -s * 25.0), Vector3(1.0, 1.0, 1.2)))
-	# Helm: Ohrscheiben
-	for s in [-1.0, 1.0]:
-		put(skel, H, m_cyl(0.026, 0.026, 0.012), gold, xf(Vector3(s * 0.088, 1.67, 0.0), Vector3(0, 0, 90)))
-	# Arc-Reaktor
-	var S := "mixamorig_Spine2"
-	put(skel, S, m_torus(0.03, 0.05), gold, xf(Vector3(0, 1.322, 0.176), Vector3(90, 0, 0)))
-	put(skel, S, m_cyl(0.034, 0.034, 0.008), cyan, xf(Vector3(0, 1.322, 0.178), Vector3(90, 0, 0)))
+	# Rüstung: Helm, Brust mit Arc-Reaktor, Schultern, Arme, Beine, Stiefel (ironman_suit.gd)
+	IronSuit.build(skel)
 	# Düsen: Flammen an Sohlen und Handflächen (nur beim Fliegen sichtbar)
 	var fx := IronFx.new()
 	skel.add_child(fx)
@@ -163,16 +135,13 @@ static func thor(skel: Skeleton3D) -> void:
 	var H := "mixamorig_Head"
 	# Haar und Bart: einzelne Strähnen (hero_hair.gd), Material hair.gdshader
 	var am := Hair.empty()
-	Hair.hair(am, 640, 11, Color(0.86, 0.66, 0.30))
-	Hair.beard(am, 380, 12, Color(0.62, 0.45, 0.20))
+	Hair.hair(am, 520, 11, Color(0.80, 0.62, 0.36))
+	Hair.beard(am, 340, 12, Color(0.60, 0.46, 0.27))
 	var hm := ShaderMaterial.new()
 	hm.shader = HAIR_SHADER
 	put(skel, H, Hair.mesh(am), hm, Transform3D.IDENTITY)
-	# Umhang-Schliesse an den Schultern
-	var S := "mixamorig_Spine2"
-	var silver := metal(Color(0.74, 0.76, 0.80), 0.3, 0.9)
-	for s in [-1.0, 1.0]:
-		put(skel, S, m_cyl(0.026, 0.026, 0.012), silver, xf(Vector3(s * 0.15, 1.455, 0.04), Vector3(90, 0, 0)))
+	# Rüstung: Scheiben, Platten, Armschienen, Stiefel, Gürtel, Schulterumhang (thor_suit.gd)
+	ThorSuit.build(skel)
 
 
 # ---------------------------------------------------------------- Schild
@@ -182,32 +151,62 @@ static func shield(parent: Node3D) -> Node3D:
 	var root := Node3D.new()
 	parent.add_child(root)
 	var sm := ShaderMaterial.new()
-	sm.shader = SHIELD_SHADER
+	sm.shader = SHIELD_SHADER  # Ringe, Stern, Abnutzung: shield.gdshader
 	var dome := MeshInstance3D.new()
 	dome.mesh = m_half(SHIELD_R)
 	dome.scale = Vector3(1.0, 0.2, 1.0)
-	dome.position = Vector3(0, 0.0, 0)
 	dome.material_override = sm
 	root.add_child(dome)
-	var steel := metal(Color(0.26, 0.27, 0.30), 0.55, 0.3)
+	var steel := CapSuit.mat(4, Color(0.36, 0.37, 0.40), Color(0.60, 0.61, 0.63), 0.8)
+	var edge := metal(Color(0.62, 0.63, 0.66), 0.36, 0.9)
+	var leather := CapSuit.mat(0, Color(0.22, 0.13, 0.11), Color(0.40, 0.28, 0.23), 0.8)
 	var back := MeshInstance3D.new()
 	back.mesh = m_cyl(SHIELD_R, SHIELD_R, 0.012)
 	back.position = Vector3(0, -0.006, 0)
 	back.material_override = steel
 	root.add_child(back)
-	# Rückseite: Lederriemen quer über die Mitte und ein Griff
-	var leather := U.mat(Color(0.25, 0.14, 0.07), 0.7)
-	for part in [[Vector3(0.07, 0.01, 0.38), Vector3(0, -0.017, 0)], [Vector3(0.05, 0.03, 0.1), Vector3(0, -0.03, 0.07)]]:
+	# Rand: Ring aus blankem, abgenutztem Metall
+	var rim := MeshInstance3D.new()
+	rim.mesh = m_torus(SHIELD_R - 0.012, SHIELD_R + 0.008)
+	rim.scale = Vector3(1, 0.9, 1)
+	rim.material_override = edge
+	root.add_child(rim)
+	# Rückseite: Nabe, breiter Armriemen (Ellbogenseite) und Griff (Handseite); Armachse = lokales z
+	var boss := MeshInstance3D.new()
+	boss.mesh = m_half(0.05)
+	boss.scale = Vector3(1, 0.4, 1)
+	boss.rotation.x = PI
+	boss.position = Vector3(0, -0.012, 0)
+	boss.material_override = steel
+	boss.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	root.add_child(boss)
+	for part in [[Vector3(0.15, 0.012, 0.052), Vector3(0, -0.022, -0.105)], [Vector3(0.15, 0.010, 0.026), Vector3(0, -0.020, -0.045)]]:
 		var sp := MeshInstance3D.new()
 		sp.mesh = m_box(part[0])
 		sp.position = part[1]
 		sp.material_override = leather
+		sp.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		root.add_child(sp)
-	var rim := MeshInstance3D.new()
-	rim.mesh = m_torus(SHIELD_R - 0.012, SHIELD_R + 0.008)
-	rim.scale = Vector3(1, 0.9, 1)
-	rim.material_override = metal(Color(0.80, 0.82, 0.86), 0.25, 0.95)
-	root.add_child(rim)
+	for sx in [-1.0, 1.0]:
+		var bk := MeshInstance3D.new()  # Schnalle am Armriemen
+		bk.mesh = m_box(Vector3(0.012, 0.018, 0.04))
+		bk.position = Vector3(sx * 0.072, -0.022, -0.105)
+		bk.material_override = edge
+		bk.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		root.add_child(bk)
+		var br := MeshInstance3D.new()  # Halter des Griffs
+		br.mesh = m_box(Vector3(0.016, 0.034, 0.020))
+		br.position = Vector3(sx * 0.052, -0.026, 0.075)
+		br.material_override = steel
+		br.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		root.add_child(br)
+	var grip := MeshInstance3D.new()
+	grip.mesh = m_cyl(0.013, 0.013, 0.12)
+	grip.rotation.z = PI / 2
+	grip.position = Vector3(0, -0.032, 0.075)
+	grip.material_override = leather
+	grip.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	root.add_child(grip)
 	return root
 
 
@@ -216,7 +215,7 @@ static func arm_shield(p: Dictionary) -> Node3D:
 	var hand: Node3D = p["lhand"]
 	var skel: Skeleton3D = p["skel"]
 	var s := shield(hand)
-	var w := Transform3D(Basis(Vector3(0, 0, -1), Vector3(0, 1, 0), Vector3(1, 0, 0)), Vector3(0.64, 1.52, -0.06))
+	var w := Transform3D(Basis(Vector3(0, 0, -1), Vector3(0, 1, 0), Vector3(1, 0, 0)), Vector3(0.64, 1.51, -0.06))
 	s.transform = skel.get_bone_global_rest(skel.find_bone("mixamorig_LeftHand")).affine_inverse() * w
 	return s
 
@@ -224,25 +223,7 @@ static func arm_shield(p: Dictionary) -> Node3D:
 # ---------------------------------------------------------------- Mjolnir
 
 static func mjolnir(skel: Skeleton3D) -> void:
-	var gun := metal(Color(0.22, 0.23, 0.27), 0.38, 0.8)
-	var silver := metal(Color(0.66, 0.68, 0.72), 0.3, 0.9)
-	var leather := U.mat(Color(0.20, 0.11, 0.06), 0.7)
-	var d := Vector3(-0.87, 0.0, 0.5)
-	var b := frame(d, Vector3(0.5, 0.0, 0.87))
-	var o := Vector3(-0.82, 1.425, -0.065)
-	var B := "mixamorig_RightHand"
-	# Griff
-	put(skel, B, m_cyl(0.017, 0.017, 0.38), leather, Transform3D(b, o + b.y * 0.06))
-	put(skel, B, m_cyl(0.021, 0.021, 0.012), silver, Transform3D(b, o + b.y * -0.125))
-	# Schlaufe am Griffende
-	put(skel, B, m_torus(0.034, 0.042), leather, Transform3D(b * Basis.from_euler(Vector3(0, 0, PI / 2)), o + b.y * -0.165))
-	# Kopf: Block mit silbernen Endkappen
-	var hc := o + b.y * 0.285
-	put(skel, B, m_box(Vector3(0.11, 0.1, 0.2)), gun, Transform3D(b, hc))
-	for s in [-1.0, 1.0]:
-		put(skel, B, m_box(Vector3(0.118, 0.108, 0.04)), silver, Transform3D(b, hc + b.z * s * 0.11))
-	put(skel, B, m_box(Vector3(0.116, 0.106, 0.016)), silver, Transform3D(b, hc))
-	put(skel, B, m_box(Vector3(0.112, 0.02, 0.2)), silver, Transform3D(b, hc - b.y * 0.056))
+	ThorSuit.mjolnir(skel)  # Aussehen: thor_suit.gd (Metall mit Gravur, Griff mit Geflecht, Schlaufe)
 
 
 # ---------------------------------------------------------------- Umhang

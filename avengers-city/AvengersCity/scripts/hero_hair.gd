@@ -103,9 +103,9 @@ static func hair(am: Dictionary, count: int, seed_v: int, base: Color) -> void:
 		var total := 0.0
 		var steps := int(length / step)
 		for k in range(steps):
-			var wob := Vector3(cos(ph + k * 0.45), 0.0, sin(ph + k * 0.45)) * 0.05
+			var wob := Vector3(cos(ph + k * 0.28), 0.0, sin(ph + k * 0.28)) * 0.03
 			d = (d + Vector3(0, -1, 0) * 0.10 + wob).normalized()
-			var flare := 0.014 * pow(float(k) / float(steps), 2.0) * (0.5 + 0.5 * float(layer))
+			var flare := 0.007 * pow(float(k) / float(steps), 2.0) * (0.5 + 0.5 * float(layer))
 			var np := push(pos + d * step, off + flare)
 			d = (d * 0.4 + (np - pos).normalized() * 0.6).normalized()
 			pos = np
@@ -116,7 +116,7 @@ static func hair(am: Dictionary, count: int, seed_v: int, base: Color) -> void:
 		if pts.size() < 4:
 			continue
 		var col := tint(base, rng, 0.16)
-		ribbon(am, pts, rng.randf_range(0.020, 0.032), col, Vector3.ZERO)
+		ribbon(am, pts, rng.randf_range(0.030, 0.050), col, Vector3.ZERO)
 		made += 1
 
 
@@ -144,7 +144,7 @@ static func beard(am: Dictionary, count: int, seed_v: int, base: Color) -> void:
 		var rp := Vector3(side * ax, y, z)
 		var out := Vector3(side * clampf(ax * 6.0, 0.0, 1.0) * 0.8, -0.1, 1.0).normalized()
 		var goatee := ax < 0.03 and y < 1.58
-		var length := rng.randf_range(0.030, 0.060) if goatee else (rng.randf_range(0.012, 0.030) if not must else rng.randf_range(0.012, 0.022))
+		var length := rng.randf_range(0.016, 0.034) if goatee else (rng.randf_range(0.008, 0.017) if not must else rng.randf_range(0.008, 0.014))
 		var d: Vector3 = (out * 0.55 + Vector3(side * 0.12 * (1.0 if must else 0.0), -1.0, 0.0) * (0.55 if not must else 0.2)).normalized()
 		if must:
 			d = Vector3(side * 0.5, -0.45, 0.55).normalized()

@@ -1,5 +1,6 @@
 shader_type spatial;
 #include "res://scripts/city_common.gdshaderinc"
+#include "res://scripts/weather_wet.gdshaderinc"
 // Flachdach: Teerpappe/Kies mit Bahnen, Flecken und Pfuetzen; UV = Weltmeter (x,z).
 
 uniform sampler2D n_grain : repeat_enable, filter_linear_mipmap_anisotropic;
@@ -34,10 +35,10 @@ void fragment() {
 	// Flecken
 	col *= 1.0 - 0.3 * smoothstep(0.62, 0.9, texture(n_blotch, p * 0.11 + vec2(0.3, 0.8)).r);
 	// Pfuetzen
-	float pud = smoothstep(0.80, 0.86, texture(n_blotch, p * 0.045 + vec2(0.5, 0.2)).r);
-	col *= 1.0 - 0.4 * pud;
+	float pud = smoothstep(0.80 - 0.25 * wx_wet, 0.86 - 0.25 * wx_wet, texture(n_blotch, p * 0.045 + vec2(0.5, 0.2)).r); // Wetter: bei Regen mehr Pfuetzen
+	col *= (1.0 - 0.4 * pud) * (1.0 - 0.3 * wx_wet);
 	ALBEDO = col;
-	ROUGHNESS = mix(0.92, 0.1, pud);
+	ROUGHNESS = mix(mix(0.92, 0.4, wx_wet), 0.03, pud);
 	SPECULAR = 0.4;
 	float bf = 1.0 - smoothstep(0.03, 0.1, px);
 	NORMAL = bump_normal(NORMAL, VERTEX, (g1 * 0.004 + g2 * 0.002 - seam * 0.002) * bf, 1.0);

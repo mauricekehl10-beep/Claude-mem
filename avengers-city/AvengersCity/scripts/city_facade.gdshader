@@ -1,5 +1,6 @@
 shader_type spatial;
 #include "res://scripts/city_common.gdshaderinc"
+#include "res://scripts/weather_wet.gdshaderinc"
 // Fassaden fuer die ganze Stadt: Ziegel, Naturstein, Beton-Fensterband, Glas-Vorhangfassade, Putz, Ladenzone, Parkhaus.
 // UV  = (Spalte, Geschoss) in Zelleneinheiten, UV2 = (Meter je Spalte, Meter je Geschoss), COLOR.rgb = Farbton, COLOR.a = Zufallswert (0 = Brandmauer ohne Fenster).
 
@@ -379,6 +380,15 @@ void fragment() {
 	vec3 gcol_out = col;
 	float gm = is_glass;
 	float refl_m = glass_metal * glass_refl;
+	// Wetter (scripts/weather.gd): Waende werden bei Regen dunkler und glatter; nachts leuchtet ein Teil der Fenster warm
+	col *= 1.0 - 0.22 * wx_wet * (1.0 - gm);
+	rough *= 1.0 - 0.3 * wx_wet;
+	if (wx_night > 0.01 && gm > 0.01) {
+		float on = step(1.0 - 0.12 - 0.45 * wx_night, hash21(id * 1.31 + vec2(seed * 53.0, 4.7)));
+		vec3 wcol = mix(vec3(1.0, 0.72, 0.40), vec3(0.62, 0.80, 1.0), step(0.86, hash21(id * 2.7 + vec2(9.1, seed * 21.0))));
+		float room = (0.45 + 0.55 * vnoise(vec2(m.x * 1.7 + seed * 13.0, m.y * 1.1))) * mix(1.0, 0.4, clamp(q.y / max(v_msz.y, 0.5), 0.0, 1.0)); // Licht im Zimmer ist nicht gleichmaessig
+		emis += wcol * gm * on * room * (0.25 + 1.45 * wx_night * wx_night) * (0.7 + 0.5 * rr2) * clamp(2.2 / v_msz.x, 0.5, 1.0);
+	}
 	ALBEDO = col;
 	ROUGHNESS = mix(rough, glass_rough, gm);
 	METALLIC = mix(metal, refl_m, gm);

@@ -35,6 +35,7 @@ const DARK := Color(0.12, 0.13, 0.16)
 const SUIT = preload("res://scripts/hero_suit.gdshader")
 const Parts = preload("res://scripts/hero_parts.gd")
 const Face = preload("res://scripts/hero_face.gd")
+const IronSuit = preload("res://scripts/ironman_suit.gd")
 
 static var _cache := {}  # fertig gebaute Netze pro Held
 
@@ -140,6 +141,9 @@ static func _paint(mi: MeshInstance3D, hero: int) -> void:
 
 static func _bake(src: Mesh, hero: int, face: bool = false) -> Mesh:
 	var arrays := src.surface_get_arrays(0)
+	if face and hero == 1:
+		arrays = IronSuit.cut_head(arrays)  # Iron Man: der Helm (ironman_suit.gd) ersetzt den Kopf
+		face = false
 	if face:
 		arrays = Face.refine(arrays)  # Gesichtszone fein unterteilen (hero_face.gd)
 	var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
@@ -192,12 +196,21 @@ static func _bulk(hero: int, p: Vector3) -> float:
 	var sole := smoothstep(0.0, 0.05, y)  # Sohle bleibt auf dem Boden
 	var d := 0.0
 	if hero == 0:
-		d += 0.012 * trunk * _band(y, 1.25, 1.46, 0.05)
-		d -= 0.008 * trunk * _band(y, 1.1, 1.24, 0.04)
-		d += 0.008 * arm * _band(ax, 0.2, 0.44, 0.05)
-		d += 0.008 * arm * smoothstep(0.69, 0.71, ax)
+		# kräftiger Supersoldat: breite Brust und Schultern, dicke Oberarme, kräftige Beine
+		d += 0.022 * trunk * _band(y, 1.26, 1.47, 0.05)
+		d += 0.004 * trunk * _band(y, 1.1, 1.24, 0.04)
+		d += 0.012 * trunk * _band(y, 1.42, 1.53, 0.03) * smoothstep(0.04, 0.09, ax)  # Nacken (Trapez)
+		d += 0.008 * trunk * _band(y, 1.0, 1.1, 0.03)  # Hüfte unter dem Gürtel
+		d += 0.022 * arm * _band(ax, 0.2, 0.36, 0.05)
+		d += 0.016 * arm * _band(ax, 0.36, 0.46, 0.04)
+		d += 0.010 * arm * _band(ax, 0.46, 0.70, 0.03)
+		d += 0.006 * arm * smoothstep(0.69, 0.71, ax)
 		d += 0.014 * sole * (1.0 - smoothstep(0.24, 0.34, y))
-		d += 0.006 * leg * _band(y, 0.55, 0.95, 0.1)
+		d += 0.016 * leg * _band(y, 0.55, 0.98, 0.1)
+		d += 0.008 * leg * _band(y, 0.3, 0.55, 0.06)
+		# Haube etwas grösser als der Kopf (Rücken und Seiten; vorn macht das hero_face.gd)
+		d += 0.008 * smoothstep(1.575, 1.63, y) * (1.0 - smoothstep(0.0, 0.07, p.z))
+		d += 0.007 * smoothstep(1.55, 1.575, y) * (1.0 - smoothstep(1.60, 1.63, y)) * smoothstep(0.0, 0.06, p.z)  # kräftiger Kiefer
 	elif hero == 1:
 		d += 0.02 * trunk * _band(y, 1.22, 1.46, 0.05)
 		d += 0.01 * trunk * _band(y, 1.1, 1.22, 0.03)
@@ -213,7 +226,7 @@ static func _bulk(hero: int, p: Vector3) -> float:
 	else:
 		d += 0.018 * trunk * _band(y, 1.2, 1.46, 0.05)
 		d += 0.016 * arm * _band(ax, 0.2, 0.46, 0.05)
-		d += 0.012 * arm * _band(ax, 0.5, 0.72, 0.02)
+		d += 0.005 * arm * _band(ax, 0.5, 0.72, 0.02)
 		d += 0.016 * sole * (1.0 - smoothstep(0.26, 0.36, y))
 		d += 0.01 * leg * _band(y, 0.55, 0.95, 0.1)
 	return d

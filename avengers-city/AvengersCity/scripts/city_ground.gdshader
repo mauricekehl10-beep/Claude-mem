@@ -1,5 +1,6 @@
 shader_type spatial;
 #include "res://scripts/city_common.gdshaderinc"
+#include "res://scripts/weather_wet.gdshaderinc"
 // Strassen-Asphalt mit Fahrbahnmarkierungen, Rinnstein, Kanaldeckeln. Ein einziges Mesh fuer die ganze Stadt:
 // das Strassenraster wird im Shader aus der Weltposition berechnet.
 
@@ -7,7 +8,6 @@ uniform sampler2D n_blotch : repeat_enable, filter_linear_mipmap_anisotropic;
 uniform sampler2D n_grain : repeat_enable, filter_linear_mipmap_anisotropic;
 uniform sampler2D n_crack : repeat_enable, filter_linear_mipmap_anisotropic;
 uniform float city_half = 470.0;
-uniform float wetness = 0.0;
 
 const float STEP = 72.0;
 const float RH = 6.0;
@@ -200,22 +200,34 @@ void fragment() {
 
 	// --- Pfuetzen / Feuchtigkeit ---
 	float pud_n = texture(n_blotch, p * 0.061 + vec2(0.13, 0.91)).r;
-	float pud = smoothstep(0.78 - wetness * 0.2, 0.83 - wetness * 0.2, pud_n + (1.0 - smoothstep(0.0, 1.5, d)) * 0.07);
+	// Wetter (wx_wet, scripts/weather.gd): trocken = Oelflecken/Schmutz wie frueher, bei Regen echte Pfuetzen (Spiegel)
+	float pud = smoothstep(0.80 - wx_wet * 0.14, 0.88 - wx_wet * 0.14, pud_n + (1.0 - smoothstep(0.0, 1.5, d)) * (0.07 + 0.06 * wx_wet));
 	pud *= step(0.0, d);
+	float wet = clamp(wx_wet * (0.8 + 0.4 * blot2), 0.0, 1.0);
+	float paint = max(wc, yc);
 	col *= 1.0 - 0.45 * pud;
-	rough = mix(rough, 0.06, pud);
-	bump_h *= 1.0 - pud;
+	col *= 1.0 - 0.40 * wet * (1.0 - 0.5 * paint);
+	rough = mix(rough, 0.14 + 0.1 * g2, wet * (1.0 - 0.6 * paint));
+	rough = mix(rough, 0.06 - 0.04 * wx_wet, pud);
+	// Pfuetze = Spiegel (Metall-Trick: Albedo wird zur Spiegelfarbe)
+	float pm = smoothstep(0.25, 0.9, pud) * smoothstep(0.1, 0.5, wx_wet);
+	col = mix(col, vec3(0.50, 0.54, 0.60), pm);
+	metal = max(metal, 0.85 * pm);
+	bump_h *= max(0.0, 1.0 - pud * 0.85 - 0.5 * wet);
+	bump_h += wx_ripples(p, smoothstep(0.004, 0.015, px)) * (pud + 0.4 * wet);
 
 	// --- Umland ausserhalb der Stadt ---
 	float out_m = smoothstep(city_half - 2.0, city_half + 40.0, max(abs(p.x), abs(p.y)));
 	vec3 terr = mix(vec3(0.07, 0.15, 0.04), vec3(0.14, 0.17, 0.06), blot2) * (0.8 + 0.5 * g3) * (0.8 + 0.4 * blot);
 	col = mix(col, terr, out_m);
 	rough = mix(rough, 0.95, out_m);
+	metal = mix(metal, 0.0, out_m);
+	wet *= 1.0 - out_m;
 
 	ALBEDO = col;
 	ROUGHNESS = rough;
 	METALLIC = metal;
-	SPECULAR = 0.5;
+	SPECULAR = mix(0.5, 1.0, wet);
 	// Bump nur im Nahbereich (spart Flimmern in der Ferne)
 	float bump_fade = 1.0 - smoothstep(0.03, 0.12, px);
 	NORMAL = bump_normal(NORMAL, VERTEX, bump_h * bump_fade, 1.0);

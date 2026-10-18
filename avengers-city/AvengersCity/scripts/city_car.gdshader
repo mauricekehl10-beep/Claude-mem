@@ -1,6 +1,7 @@
 shader_type spatial;
 render_mode cull_disabled;
 #include "res://scripts/city_common.gdshaderinc"
+#include "res://scripts/weather_wet.gdshaderinc"
 // Auto: Lack mit Klarlack, Kunststoff, Chrom, Reifen mit Profil, Felgen, Lampen, Tuerfugen. Art des Teils steckt in COLOR.a (Art/15).
 // Innenseiten der Karosserie (cull_disabled) werden dunkel: so sieht man durch die Scheiben einen Innenraum.
 
@@ -213,6 +214,9 @@ void fragment() {
 		clear = 0.0;
 		emis = vec3(0.0);
 	}
+	// Wetter (scripts/weather.gd): nasser Lack glaenzt staerker; nachts leuchten Scheinwerfer und Ruecklichter staerker
+	rough *= 1.0 - 0.4 * wx_wet;
+	emis *= 1.0 + wx_night * 2.5;
 	ALBEDO = col;
 	ROUGHNESS = rough;
 	METALLIC = metal;

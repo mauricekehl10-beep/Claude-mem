@@ -15,6 +15,8 @@ var limbs: Array = []  # je Seite: Knochen und Vorzeichen
 var all_bones: Array = []
 var anim_rot := {}  # Knochen -> Drehung aus der Animation (zum Zurückblenden)
 var ARCH := [-0.10, -0.14, -0.18, -0.42, -0.56]  # Rücken und Kopf biegen sich zurück, damit der Blick nach vorn geht
+var thor_weapon := "mjolnir"  # Thor: "mjolnir" oder "stormbreaker" (das Flugverhalten ist pro Waffe austauschbar)
+var thor  # Thor mit Mjolnir: Flugpose, Abheben, Landung, Effekte (thor_mjolnir.gd)
 
 
 func _init(s: Skeleton3D, h: int) -> void:
@@ -108,6 +110,9 @@ static func _slerp(a: Vector3, b: Vector3, f: float) -> Vector3:
 
 func apply() -> void:
 	if not is_instance_valid(skel) or weight < 0.001:
+		return
+	if hero == 2 and thor_weapon == "mjolnir" and thor != null:
+		thor.apply()  # Thor mit Mjolnir: eigene Haltungen (thor_mjolnir.gd)
 		return
 	for b in all_bones:
 		anim_rot[b] = skel.get_bone_pose_rotation(b)

@@ -1,5 +1,6 @@
 shader_type spatial;
 #include "res://scripts/city_common.gdshaderinc"
+#include "res://scripts/weather_wet.gdshaderinc"
 // Gehweg (Betonplatten mit Fugen, Granit-Bordstein) fuer die erhoehten Blockflaechen.
 
 uniform sampler2D n_blotch : repeat_enable, filter_linear_mipmap_anisotropic;
@@ -77,9 +78,26 @@ void fragment() {
 		rough = 0.78;
 		bh = g1 * 0.0012;
 	}
+	// Wetter (wx_wet, scripts/weather.gd): nasse Platten dunkel und glaenzend, Pfuetzen mit Regenringen
+	float wet = 0.0;
+	float pud = 0.0;
+	float metal = 0.0;
+	if (wn.y > 0.5) {
+		float pn = texture(n_blotch, p * 0.083 + vec2(0.55, 0.15)).r;
+		pud = smoothstep(0.80 - 0.14 * wx_wet, 0.88 - 0.14 * wx_wet, pn) * smoothstep(0.3, 0.8, wx_wet) * step(0.25, -sd);
+		wet = clamp(wx_wet * 0.9 * (0.8 + 0.4 * blot2), 0.0, 1.0);
+		col *= 1.0 - 0.38 * wet;
+		col = mix(col, vec3(0.50, 0.54, 0.60), pud); // Pfuetze = Spiegel
+		rough = mix(rough, 0.26 + 0.2 * g2, wet);
+		rough = mix(rough, 0.03, pud);
+		metal = max(0.1 * wet, 0.85 * pud);
+		bh *= 1.0 - 0.5 * wet - 0.4 * pud;
+		bh += wx_ripples(p, smoothstep(0.004, 0.015, px)) * (pud + 0.25 * wet);
+	}
 	ALBEDO = col;
 	ROUGHNESS = rough;
-	SPECULAR = 0.45;
+	METALLIC = metal;
+	SPECULAR = mix(0.45, 0.9, wet);
 	float bump_fade = 1.0 - smoothstep(0.03, 0.12, px);
 	NORMAL = bump_normal(NORMAL, VERTEX, bh * bump_fade, 1.0);
 }

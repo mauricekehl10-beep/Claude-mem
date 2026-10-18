@@ -7,7 +7,10 @@ const HeroModel = preload("res://scripts/hero_model.gd")
 const MixamoModel = preload("res://scripts/mixamo_model.gd")
 const ArmPose = preload("res://scripts/arm_pose.gd")
 const FlyPose = preload("res://scripts/fly_pose.gd")
+const ThorMjolnir = preload("res://scripts/thor_mjolnir.gd")
+const IronPose = preload("res://scripts/iron_pose.gd")
 const ShieldThrow = preload("res://scripts/shield_throw.gd")
+const ThorWeapons = preload("res://scripts/thor_weapons.gd")
 
 var HEROES := [
 	{"name": "Captain America", "suit": Color(0.10, 0.26, 0.72), "accent": Color(0.80, 0.10, 0.14), "trim": Color(0.95, 0.95, 0.95), "scale": 1.0},
@@ -46,6 +49,9 @@ const ATK := {
 	"swing": {"dmg": 20.0, "reach": 3.2, "arc": 0.0, "hit": 0.17, "len": 0.5},
 	"throw": {"hit": 0.40, "len": 0.62},  # Wurf-Pose und Release macht shield_throw.gd (hit = Notfall-Auslöser)
 	"bolt": {"hit": 0.30, "len": 0.62},
+	"axe": {"dmg": 30.0, "reach": 3.8, "arc": 0.0, "hit": 0.27, "len": 0.66},  # Stormbreaker: Axtschlag (thor_weapons.gd)
+	"axe_air": {"dmg": 30.0, "reach": 3.8, "arc": 0.0, "hit": 0.27, "len": 0.66},
+	"axe_throw": {"hit": 0.27, "len": 0.70},  # Axtwurf mit Rückkehr
 }
 
 var hero := 0
@@ -88,7 +94,10 @@ var hover_t := 0.0
 var cam_lag := Vector3.ZERO  # Kamera zieht beim Beschleunigen nach
 var cam_vel := Vector3.ZERO
 var cam_dist := 1.0  # Kamera-Abstand (1 = voll, kleiner = wegen Wand nähergerückt)
-var fp: FlyPose  # Flugpose per Code (fly_pose.gd)
+var fp  # Flugpose per Code: fly_pose.gd (Thor), iron_pose.gd (Iron Man)
+var thor_weapon := "mjolnir"  # Thor: "mjolnir" oder "stormbreaker" (bestimmt das Flugverhalten, siehe fly_pose.gd)
+var tf  # Thor mit Mjolnir: Abheben, Flug, Landung, Effekte (thor_mjolnir.gd)
+var wep  # Thors Waffen (thor_weapons.gd): Mjolnir/Stormbreaker, Taste Q
 var mx: Dictionary = {}
 var mx_anim: AnimationPlayer
 var mx_cur := ""
@@ -160,6 +169,8 @@ func set_active(on: bool) -> void:
 
 # Angriff, Sprung und Landung abbrechen (Heldenwechsel, Auto, Neustart)
 func reset_states() -> void:
+	if wep:
+		wep.reset()
 	if st and is_instance_valid(st):
 		st.cancel()
 	atk = ""
@@ -185,6 +196,10 @@ func reset_states() -> void:
 	if fp:
 		fp.weight = 0.0
 		fp.fast = 0.0
+		if hero == 1:
+			fp.reset()
+	if tf:
+		tf.reset()
 
 
 func build_model() -> void:
@@ -203,7 +218,9 @@ func build_model() -> void:
 	mx_cur = ""
 	aim = null
 	fp = null
+	wep = null
 	st = null
+	tf = null
 	rep_mat = null
 	rep_light = null
 	body_yaw = yaw
@@ -328,6 +345,8 @@ func can_attack(kind: String) -> bool:
 		return shield_state == 0 and st != null and st.ready()
 	if kind == "bolt":
 		return bolt_cd <= 0.0
+	if kind == "axe_throw":
+		return wep != null and wep.can_throw()
 	return true
 
 
@@ -343,6 +362,8 @@ func read_attack_input() -> void:
 			want = "swing" if flying else "hammer"
 		elif Input.is_action_just_pressed("throw"):
 			want = "bolt"
+	if want != "" and wep:
+		want = wep.map_attack(want)  # Stormbreaker: Axtschlag und Axtwurf statt Hammer und Blitz
 	if want == "" or not can_attack(want):
 		return
 	if atk == "":
@@ -408,6 +429,8 @@ func update_attack(delta: float) -> void:
 
 
 func attack_hit(kind: String) -> void:
+	if wep and wep.attack_hit(kind):
+		return
 	var a: Dictionary = ATK[kind]
 	if kind == "throw":
 		throw_shield()
@@ -492,8 +515,8 @@ func launch() -> void:
 
 
 func landed(impact: float) -> void:
-	if air_t < 0.2:
-		return
+	if air_t < 0.2 or (hero == 1 and flying):
+		return  # Iron Man landet aus dem Flug mit eigener Landeanimation (iron_pose.gd)
 	if impact < -HARD_FALL:
 		hard_t = 0.4
 	elif Vector2(velocity.x, velocity.z).length() < 3.0:
@@ -552,6 +575,20 @@ func _physics_process(delta: float) -> void:
 				start_fly()
 		else:
 			tap_t = 0.0
+	if tf and tf.winding():
+		# Thor: Anlauf zum Abheben. Der Hammer kreist, Thor bleibt stehen (in der Luft schwebt er), danach geht der Flug los.
+		tf.windup(delta)
+		if not flying:
+			var floor_now := is_on_floor()
+			velocity.x = move_toward(velocity.x, 0.0, 40.0 * delta)
+			velocity.z = move_toward(velocity.z, 0.0, 40.0 * delta)
+			velocity.y = maxf(velocity.y - GRAVITY * delta, -45.0) if floor_now else lerpf(velocity.y, 0.0, 1.0 - exp(-7.0 * delta))
+			body_yaw = lerp_angle(body_yaw, yaw, 1.0 - exp(-9.0 * delta))
+			last_vy = velocity.y
+			move_and_slide()
+			update_camera(delta)
+			animate(delta)
+			return
 	if flying:
 		fly_t += delta
 		if is_on_floor() and fly_t > 0.3 and not Input.is_action_pressed("jump"):
@@ -569,6 +606,8 @@ func _physics_process(delta: float) -> void:
 	# Schlag-Clips und harte Landungen bremsen am Boden
 	if is_on_floor() and (hard_t > 0.0 or clip_attack()):
 		spd *= 0.3
+	if tf and thor_weapon == "mjolnir" and is_on_floor():
+		spd *= tf.ground_speed()  # Thor: Landehocke bremst
 	if dir.length() > 0.05:
 		dir = dir.normalized()
 		var wantv := Vector2(dir.x, dir.z) * spd
@@ -611,13 +650,21 @@ func _physics_process(delta: float) -> void:
 # ---------- Fliegen ----------
 
 func start_fly() -> void:
+	jump_t = -1.0
+	if hero == 2 and tf and thor_weapon == "mjolnir" and tf.begin(is_on_floor()):
+		return  # Thor: erst kreist der Hammer (Anlauf), danach startet der Flug wirklich (tf.windup)
+	if wep:
+		wep.on_fly_start()
 	flying = true
 	fly_t = 0.0
-	jump_t = -1.0
 	land_t = 0.0
 	hard_t = 0.0
 	if is_on_floor() or velocity.y < FLY_HOP:
 		velocity.y = maxf(velocity.y, FLY_HOP)  # kleiner Hochsprung, auch vom Boden aus
+	if hero == 2 and tf and thor_weapon == "mjolnir":
+		velocity += tf.launch_kick()  # Absprung: der Hammer reisst Thor nach vorn/oben
+	if hero == 1 and fp:
+		fp.on_start(self)  # Iron Man: Start vom Boden (iron_pose.gd)
 
 
 func stop_fly() -> void:
@@ -626,12 +673,22 @@ func stop_fly() -> void:
 
 # Boden berührt: Fliegen aus, zu schnelles Tempo wird sanft abgebaut (die Landeanimation startet über landed())
 func land_from_fly() -> void:
+	if wep:
+		wep.on_land()
 	flying = false
+	if hero == 1 and fp:
+		fp.on_touch(self)  # Iron Man: Landeanimation (Hocke, Superhelden-Landung)
+		if fp.land_hero:
+			hard_t = 0.5
 	var hv := Vector2(velocity.x, velocity.z)
 	if hv.length() > SPRINT_V:
 		hv = hv.normalized() * SPRINT_V
 		velocity.x = hv.x
 		velocity.z = hv.y
+	if hero == 2 and tf and thor_weapon == "mjolnir":
+		tf.touchdown(hv.length())  # Landehocke mit Hand am Boden (eigene Pose statt Landeanimation)
+		land_t = 0.0
+		hard_t = 0.0
 
 
 # Flug: W/S in Blickrichtung der Kamera (mit Neigung), A/D seitlich, Leertaste steigen, Strg sinken, Shift Boost.
@@ -655,6 +712,8 @@ func fly_move(delta: float) -> void:
 	if Input.is_action_pressed("descend"):
 		climb -= 1.0
 	want.y += climb * FLY_CLIMB
+	if hero == 1 and fp and fp.launching:
+		want.y = maxf(want.y, fp.launch_thrust())  # Start: senkrecht hoch
 	var rate := 2.3 if want.length() > 0.5 else 2.7
 	if boost_key:
 		rate = 3.2
@@ -692,6 +751,8 @@ func fly_move(delta: float) -> void:
 
 # Körperhaltung: Neigung, Kurvenneigung, Drehung. Im Flug folgt der Körper der Flugrichtung, am Boden lehnt er sich im Sprint nach vorn.
 func update_body(delta: float) -> void:
+	if hero == 1 and fp and fp.update_body(self, delta):
+		return  # Iron Man im Flug und bei der Landung: iron_pose.gd
 	var vel := velocity
 	var vh := Vector3(vel.x, 0.0, vel.z)
 	var face := Vector3(-sin(body_yaw), 0.0, -cos(body_yaw))
@@ -705,8 +766,10 @@ func update_body(delta: float) -> void:
 		var sp := vel.length()
 		var fwd3: Vector3 = -cam.global_transform.basis.z
 		fast_t = smoothstep(3.0, 13.0, maxf(vel.dot(fwd3), 0.0))
-		if atk == "swing" or atk == "bolt":
+		if atk == "swing" or atk == "bolt" or atk.begins_with("axe"):
 			fast_t = minf(fast_t, 0.1)  # beim Hammerschlag/Blitz richtet sich die Figur auf
+		if tf and thor_weapon == "mjolnir":
+			fast_t = tf.fast_limit(fast_t)  # Thor: beim Anflug auf den Boden richtet er sich auf
 		if sp > 3.0:
 			elev_t = asin(clampf(vel.y / sp, -1.0, 1.0))
 		tilt_t = clampf(vh.dot(face) / 12.0, -1.0, 1.0) * 0.32
@@ -721,17 +784,28 @@ func update_body(delta: float) -> void:
 	tilt = lerpf(tilt, tilt_t, k5)
 	side_tilt = lerpf(side_tilt, side_t, k5)
 	bank = lerpf(bank, bank_t, 1.0 - exp(-6.0 * delta))
+	var mj: bool = tf != null and thor_weapon == "mjolnir"
+	if mj:
+		tf.update(delta)  # Thor mit Mjolnir: Abheben, Kurve, Landung, Leuchten
 	var lam := fly_fast * (PI * 0.5 - elev) + tilt * (1.0 - fly_fast)  # Neigung des Körpers nach vorn
+	if wep:
+		lam *= wep.lean_scale()  # Stormbreaker: aufrechter als Mjolnir
 	var hover := 0.0
 	if fp:
-		fp.weight = move_toward(fp.weight, 1.0 if flying else 0.0, 4.0 * delta)
+		if hero == 2:
+			fp.thor_weapon = thor_weapon
+		fp.weight = move_toward(fp.weight, 1.0 if (flying or (mj and tf.pose_on())) else 0.0, 4.0 * delta)
 		fp.fast = fly_fast
 		fp.t = hover_t
 		hover = fp.weight * (1.0 - fly_fast)
+		if mj and not flying:
+			hover = 0.0
 	lam += sin(hover_t * 1.1) * 0.03 * hover  # Schweben: ganz leichtes Neigen
 	var sc: float = HEROES[hero]["scale"]
 	var rot := Basis(Vector3.UP, body_yaw) * Basis(Vector3.RIGHT, -lam)
 	rot = rot * Basis(Vector3(0, 0, 1), -side_tilt * (1.0 - fly_fast)) * Basis(Vector3.UP, bank * fly_fast)
+	if mj:
+		rot = rot * Basis(Vector3.UP, tf.roll)  # Abheben: Körper dreht sich einmal um die Längsachse
 	model.basis = rot * Basis.from_scale(Vector3.ONE * sc)
 	# Drehpunkt in Hüfthöhe statt an den Füssen; beim Schweben sanft auf und ab
 	var pv := Vector3(0, sc, 0)
@@ -822,8 +896,13 @@ func build_mixamo(h: Dictionary) -> void:
 	mx_cur = "idle"
 	mx_anim.advance(0.0)  # gleich die Idle-Pose zeigen (nicht ein Bild lang die T-Pose)
 	if hero != 0:
-		fp = FlyPose.new(mx["skel"], hero)
+		fp = (IronPose if hero == 1 else FlyPose).new(mx["skel"], hero)
 		mx_anim.mixer_applied.connect(fp.apply)  # Flugpose (vor dem Arm-Posing, damit Zielen und Schlagen sie überschreiben)
+		if hero == 2:
+			tf = ThorMjolnir.new()  # Thor mit Mjolnir: Abheben, Flug, Landung, Effekte
+			model.add_child(tf)
+			tf.setup(self, fp, model)
+			fp.thor = tf
 	aim = ArmPose.new(mx["skel"], "Left" if hero == 0 else "Right")
 	mx_anim.mixer_applied.connect(aim.apply)  # Arm-Posing läuft direkt nach der Animation
 	if hero == 0:
@@ -836,14 +915,18 @@ func build_mixamo(h: Dictionary) -> void:
 	elif hero == 1:
 		# Repulsor in der Handfläche (Knochen: +Y zu den Fingern, +Z aus der Handfläche)
 		rep_mat = U.glow(Color(0.6, 0.95, 1.0), 1.0)
-		U.sphere(mx["rhand"], 0.05, Vector3(0, 0.08, 0.035), rep_mat)
-		U.sphere(mx["lhand"], 0.05, Vector3(0, 0.08, 0.035), rep_mat)  # beim Schweben leuchten beide Handflächen
+		U.sphere(mx["rhand"], 0.03, Vector3(0, 0.065, 0.04), rep_mat).scale = Vector3(1, 1, 0.5)
+		U.sphere(mx["lhand"], 0.03, Vector3(0, 0.065, 0.04), rep_mat).scale = Vector3(1, 1, 0.5)  # beim Schweben leuchten beide Handflächen
 		rep_light = OmniLight3D.new()
 		rep_light.light_color = Color(0.6, 0.95, 1.0)
 		rep_light.omni_range = 4.0
 		rep_light.light_energy = 0.0
 		rep_light.position = Vector3(0, 0.1, 0.1)
 		mx["rhand"].add_child(rep_light)
+	elif hero == 2:
+		wep = ThorWeapons.new()  # Mjolnir/Stormbreaker (Taste Q)
+		model.add_child(wep)
+		wep.setup(self, mx)
 
 
 # Arm und Oberkörper per Code (nach der Animation): Iron Man zielt, Captain wirft, Thor ruft den Blitz
@@ -919,7 +1002,7 @@ func animate_mx(delta: float) -> void:
 		want = ATK[atk]["clip"]
 		spd = ATK[atk]["speed"]
 		blend = 0.05
-	elif flying:
+	elif flying or (tf and thor_weapon == "mjolnir" and tf.pose_on()):
 		want = "idle"  # nur Unterlage für Finger; Rumpf, Arme und Beine setzt die Flugpose (fly_pose.gd)
 		blend = 0.3
 	elif jump_t >= 0.0:

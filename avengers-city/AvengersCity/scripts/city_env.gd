@@ -2,17 +2,24 @@ extends RefCounted
 # Umgebung der Stadt: Himmel mit Wolken, Sonne, Dunst, Tonemapping, Farbkorrektur.
 
 const Tex = preload("res://scripts/city_tex.gd")
+const Weather = preload("res://scripts/weather.gd")
 
 # Richtung ZUR Sonne (Nachmittag, ca. 40 Grad ueber dem Horizont, schraeg zum Strassenraster)
 const SUN_DIR := Vector3(0.47, 0.80, 0.47)
 
 
-static func build(parent: Node3D) -> void:
+# Globale Shader-Werte fuer das Wetter muessen existieren, bevor der erste Stadt-Shader geladen wird
+static func _static_init() -> void:
+	Weather.ensure_globals()
+
+
+static func build(parent: Node3D) -> Node:
 	var vp := parent.get_viewport()
 	vp.msaa_3d = Viewport.MSAA_4X
 	vp.screen_space_aa = Viewport.SCREEN_SPACE_AA_DISABLED
-	RenderingServer.directional_soft_shadow_filter_set_quality(RenderingServer.SHADOW_QUALITY_SOFT_HIGH)
-	RenderingServer.directional_shadow_atlas_set_size(8192, true)
+	RenderingServer.directional_soft_shadow_filter_set_quality(RenderingServer.SHADOW_QUALITY_SOFT_MEDIUM)  # HIGH+8192 kostet ~2x (gemessen)
+	RenderingServer.directional_shadow_atlas_set_size(4096, true)
+	RenderingServer.environment_set_volumetric_fog_volume_size(96, 64)  # feinere Lichtstrahlen (Standard 64x64)
 
 	var env := Environment.new()
 	env.background_mode = Environment.BG_SKY
@@ -79,11 +86,11 @@ static func build(parent: Node3D) -> void:
 
 	# Verdeckung und Streulicht
 	env.ssao_enabled = true
-	env.ssao_radius = 1.6
-	env.ssao_intensity = 1.6
-	env.ssao_power = 1.6
-	env.ssao_detail = 0.6
-	env.ssao_light_affect = 0.15
+	env.ssao_radius = 1.2
+	env.ssao_intensity = 1.9
+	env.ssao_power = 1.5
+	env.ssao_detail = 0.8
+	env.ssao_light_affect = 0.25
 
 	# Globale Beleuchtung (Licht, das von Waenden zurueckgeworfen wird)
 	env.sdfgi_enabled = true
@@ -115,8 +122,8 @@ static func build(parent: Node3D) -> void:
 	sun.light_color = Color(1.0, 0.90, 0.76)
 	sun.light_angular_distance = 0.25
 	sun.shadow_enabled = true
-	sun.shadow_bias = 0.04
-	sun.shadow_normal_bias = 1.6
+	sun.shadow_bias = 0.03
+	sun.shadow_normal_bias = 1.0
 	sun.shadow_blur = 1.0
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
 	sun.directional_shadow_max_distance = 190.0
@@ -127,3 +134,10 @@ static func build(parent: Node3D) -> void:
 	sun.directional_shadow_fade_start = 0.85
 	sun.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_AND_SKY
 	parent.add_child(sun)
+
+	# Wetter-System (Taste T): steuert Sonne, Himmel, Dunst, Naesse, Regen und Blitze
+	var weather := Weather.new()
+	weather.name = "Weather"
+	parent.add_child(weather)
+	weather.setup(env, sm, sun)
+	return weather

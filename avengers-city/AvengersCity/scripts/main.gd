@@ -213,9 +213,7 @@ func build_hud() -> void:
 		crosshair.add_child(bar)
 	help = Label.new()
 	help.position = Vector2(18, 640)
-	help.text = "WASD laufen · Maus umsehen · Shift sprinten · Leertaste springen · Tab Held wechseln · G ins Auto ein/aus · ESC Maus frei
-Captain: Linksklick schlagen · Rechtsklick Schild werfen  |  Thor: Linksklick Hammer · Rechtsklick Blitz  |  Iron Man: Linksklick schießen
-Fliegen (Iron Man/Thor): Leertaste 2x tippen = start/ende · W/A/S/D in Blickrichtung · Leertaste steigen · Strg sinken · Shift Boost  |  Auto: Leertaste Drift"
+	help.text = "WASD laufen · Maus umsehen · Shift sprinten · Leertaste springen · Tab Held wechseln · G ins Auto ein/aus · T Wetter · ESC Maus frei\nCaptain: Linksklick schlagen · Rechtsklick Schild werfen  |  Thor: Linksklick Hammer/Axt · Rechtsklick Blitz/Axt werfen · Q Mjolnir/Stormbreaker  |  Iron Man: Linksklick schießen\nFliegen (Iron Man/Thor): Leertaste 2x tippen = start/ende · W/A/S/D in Blickrichtung · Leertaste steigen · Strg sinken · Shift Boost  |  Auto: Leertaste Drift"
 	layer.add_child(help)
 
 

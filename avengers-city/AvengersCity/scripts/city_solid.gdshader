@@ -1,5 +1,6 @@
 shader_type spatial;
 #include "res://scripts/city_common.gdshaderinc"
+#include "res://scripts/weather_wet.gdshaderinc"
 // Allzweck-Shader fuer Strassenmoebel, Dachaufbauten, Gesimse: Farbe aus Vertexfarbe (sRGB), UV2 = (Rauheit, Metall), UV.x = Leuchtstaerke.
 
 uniform sampler2D n_grain : repeat_enable, filter_linear_mipmap_anisotropic;
@@ -24,11 +25,14 @@ void fragment() {
 	// Staub und Schmutz nahe am Boden
 	float low = 1.0 - smoothstep(0.0, 1.2, wp.y);
 	col *= 1.0 - 0.25 * low * g2;
+	// Wetter (scripts/weather.gd): nass = dunkler und glatter; nachts leuchten Lampen staerker
+	col *= 1.0 - 0.18 * wx_wet;
+	float rgh = UV2.x * (1.0 - 0.4 * wx_wet);
 	ALBEDO = col;
-	ROUGHNESS = UV2.x;
+	ROUGHNESS = rgh;
 	METALLIC = UV2.y;
 	SPECULAR = 0.5;
-	EMISSION = col * UV.x;
+	EMISSION = col * UV.x * (UV.x < 0.99 ? 1.0 + wx_night * 5.0 : 1.0 - 0.9 * wx_night); // UV.x = 1: Eigenlicht des Umlands (nachts aus)
 	float bf = 1.0 - smoothstep(0.03, 0.1, px);
 	NORMAL = bump_normal(NORMAL, VERTEX, (g1 - 0.5) * 0.002 * bf, 1.0);
 }

@@ -14,6 +14,10 @@ const CityCars = preload("res://scripts/city_cars.gd")
 const CityPark = preload("res://scripts/city_park.gd")
 const CityTraffic = preload("res://scripts/city_traffic.gd")
 const CityMats = preload("res://scripts/city_mats.gd")
+const CityPlan = preload("res://scripts/city_plan.gd")
+const CityStreet = preload("res://scripts/city_street.gd")
+const CityWater = preload("res://scripts/city_water.gd")
+const CityPeds = preload("res://scripts/city_peds.gd")
 const BLOCK := 56.0
 const STREET := 16.0
 const GRID := 5
@@ -122,14 +126,16 @@ func build_world() -> void:
 	add_child(ground)
 	var gcol := CollisionShape3D.new()
 	var gbs := BoxShape3D.new()
-	gbs.size = Vector3(2400, 1, 2400)
+	gbs.size = Vector3(950, 1, 4000)  # Insel (Wasser ringsum, siehe city_water.gd)
 	gcol.shape = gbs
-	gcol.position = Vector3(0, -0.5, 0)
+	gcol.position = Vector3(0, -0.5, -1525)
 	ground.add_child(gcol)
 	CityGround.build(self, 2, RING)
 
+	CityStreet.reset()
 	city_gen = CityBuildings.new(20250611)
 	city_props = CityProps.new()
+	city_gen.props = city_props
 	city_cars = CityCars.new()
 	city_park = CityPark.new()
 	for ix in range(-2 - RING, 3 + RING):
@@ -138,10 +144,10 @@ func build_world() -> void:
 			var cx: float = ix * STEP
 			var cz: float = iz * STEP
 			var zone := maxi(absi(ix), absi(iz))
-			if core and zone != 0 and ((ix + 2) + 2 * (iz + 2)) % 5 == 1:
+			if CityPlan.is_park(ix, iz):
 				city_park.build(self, cx, cz, ix, iz, city_props)
 			else:
-				var node: Node3D = build_block(cx, cz, city_gen, zone, core)
+				var node: Node3D = build_block(cx, cz, city_gen, zone, core, ix, iz)
 				if zone == 0:
 					# Platz um den Turm: Baeume
 					for p in [Vector2(-22.5, 0), Vector2(22.5, 0), Vector2(0, -22.5), Vector2(0, 22.5), Vector2(-22.5, -22.5), Vector2(22.5, 22.5), Vector2(-22.5, 22.5), Vector2(22.5, -22.5)]:
@@ -152,6 +158,10 @@ func build_world() -> void:
 				city_cars.park_block(self, cx, cz, 0.62 if zone <= 2 else 0.3, ix, iz)
 	build_roads()
 	build_lamps()
+	CityWater.build(self, city_gen)
+	var peds := CityPeds.new()
+	peds.name = "Peds"
+	add_child(peds)
 	build_parked_cars()
 	# Fahrender Verkehr
 	traffic = CityTraffic.new()
@@ -160,10 +170,10 @@ func build_world() -> void:
 	traffic.setup(90, 77)
 
 
-func build_block(cx: float, cz: float, gen, zone: int, core: bool) -> Node3D:
+func build_block(cx: float, cz: float, gen, zone: int, core: bool, ix: int = 0, iz: int = 0) -> Node3D:
 	if zone == 0:
 		return gen.build_landmark(self, cx, cz)
-	return gen.build_block(self, cx, cz, zone, core)
+	return gen.build_block(self, cx, cz, zone, core, ix, iz)
 
 
 func build_park(_cx: float, _cz: float) -> void:
@@ -180,6 +190,7 @@ func build_lamps() -> void:
 
 func build_parked_cars() -> void:
 	city_cars.commit(self)
+	CityStreet.commit_steam(self)
 	CityGround.outskirts(self, city_props.trees, 470.0)
 	city_props.trees.commit(self)
 

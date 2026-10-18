@@ -109,7 +109,7 @@ void fragment() {
 		col = mix(c, avg, lod);
 		bh = -0.005 * mort * (1.0 - lod) + 0.0015 * g1;
 		rough = 0.88;
-	} else if (kind == 1 || kind == 9) {
+	} else if (kind == 1 || kind == 9 || kind == 7) {
 		// Naturstein-Quader
 		vec2 su = vec2(0.95, 0.5);
 		vec2 sq = m / su;
@@ -344,6 +344,61 @@ void fragment() {
 				rough = mix(rough, 0.55, sh2);
 			}
 			bh = bh - 0.08 * wc;
+		} else if (kind == 7) {
+			// Art-Deco-Turm: Pfeiler, hohe Fensterstreifen, Bruestungspaneele aus Metall
+			float cw = v_msz.x;
+			float fhh = v_msz.y;
+			vec2 aa = vec2(px);
+			float ph = 0.46;
+			vec2 lo = vec2(ph + 0.05, 1.05);
+			vec2 hi = vec2(cw - ph - 0.05, fhh - 0.32);
+			float wc = rect_cov(q, lo, hi, aa);
+			float fw = 0.06;
+			float inner = rect_cov(q, lo + vec2(fw), hi - vec2(fw), aa);
+			float frame = wc * (1.0 - inner);
+			float mull = rect_cov(q, vec2(cw * 0.5 - 0.03, lo.y), vec2(cw * 0.5 + 0.03, hi.y), aa) * wc;
+			float rail = rect_cov(q, vec2(lo.x, hi.y - 0.5 - 0.025), vec2(hi.x, hi.y - 0.5 + 0.025), aa) * wc;
+			frame = max(frame, max(mull, rail));
+			vec2 pq = q - lo - vec2(fw);
+			vec2 psz = hi - lo - vec2(2.0 * fw);
+			vec3 icol;
+			float irefl;
+			window_content(rr, pq, psz, rr2, icol, irefl);
+			icol *= 1.0 - 0.45 * (1.0 - smoothstep(0.0, 0.25, hi.y - q.y));
+			float sp = rect_cov(q, vec2(ph, 0.0), vec2(cw - ph, 1.05), aa);
+			vec3 spc = trim_col * (0.85 + 0.2 * g1);
+			float fieldc = rect_cov(q, vec2(ph + 0.22, 0.17), vec2(cw - ph - 0.22, 0.88), aa);
+			spc = mix(spc, spc * 0.6, fieldc);
+			float pier_edge = 1.0 - cov(min(q.x, cw - q.x), 0.0, ph + 0.05, px);
+			col = mix(col, spc, sp);
+			col = mix(col, frame_col, frame);
+			col = mix(col, icol, wc * inner * (1.0 - frame));
+			is_glass = wc * inner * (1.0 - frame);
+			glass_refl = irefl;
+			metal = 0.45 * sp;
+			rough = mix(rough, 0.4, sp);
+			bh = bh - 0.12 * wc - 0.04 * sp + 0.02 * pier_edge;
+			ao = mix(ao, 0.55, wc * 0.5 + fieldc * 0.2);
+		} else if (kind == 10) {
+			// Sockelgeschoss (Brownstone): rustizierter Stein, kleines vergittertes Fenster
+			float cw = v_msz.x;
+			float fhh = v_msz.y;
+			vec2 aa = vec2(px);
+			float gy = min(fract(m.y / 0.5), 1.0 - fract(m.y / 0.5)) * 0.5;
+			float gl = 1.0 - smoothstep(0.010, 0.010 + px, gy);
+			col *= 1.0 - 0.38 * gl * (1.0 - smoothstep(0.03, 0.12, px));
+			float wx = 0.42;
+			vec2 lo = vec2(cw * 0.5 - wx, fhh * 0.28);
+			vec2 hi = vec2(cw * 0.5 + wx, fhh * 0.80);
+			float wc = rect_cov(q, lo, hi, aa);
+			float bars = wc * step(0.5, fract((q.x - lo.x) / 0.14));
+			float frm = wc * (1.0 - rect_cov(q, lo + vec2(0.05), hi - vec2(0.05), aa));
+			col = mix(col, vec3(0.03, 0.035, 0.04), wc);
+			col = mix(col, vec3(0.05, 0.05, 0.055), max(bars * 0.6, frm));
+			bh = bh - 0.1 * wc;
+			is_glass = wc * (1.0 - max(bars * 0.6, frm)) * 0.8;
+			glass_refl = 0.5;
+			ao = mix(ao, 0.6, wc * 0.5);
 		} else if (kind == 6) {
 			// Parkhaus: Betonbrüstung + offene Felder mit Autos im Dunkeln
 			float cw = v_msz.x;

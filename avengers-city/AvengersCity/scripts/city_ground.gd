@@ -53,8 +53,9 @@ static func build(parent: Node3D, core_half_blocks: int, ring: int) -> void:
 	var gm := MeshInstance3D.new()
 	gm.name = "Ground"
 	var pm := PlaneMesh.new()
-	pm.size = Vector2(7000, 7000)
+	pm.size = Vector2(950, 4000)  # Insel mit Halbinsel nach Norden; ringsum Wasser (city_water.gd)
 	gm.mesh = pm
+	gm.position = Vector3(0, 0, -1525)
 	gm.material_override = ground_material()
 	gm.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	parent.add_child(gm)
@@ -128,7 +129,7 @@ static func outskirts(parent: Node3D, trees, city_half: float) -> void:
 			var hn := noise.get_noise_2d(cos(a) * 3.0, sin(a) * 3.0) * 0.5 + 0.5
 			var ridge := noise.get_noise_2d(cos(a) * 9.0 + r * 0.0007, sin(a) * 9.0) * 0.5 + 0.5
 			var t := smoothstep(0.0, 0.35, float(i) / rings)
-			var h := t * (60.0 + 330.0 * hn * hn + 70.0 * ridge) * (1.0 - 0.35 * smoothstep(0.7, 1.0, float(i) / rings))
+			var h := t * (30.0 + 110.0 * hn * hn + 40.0 * ridge) * (1.0 - 0.35 * smoothstep(0.7, 1.0, float(i) / rings))
 			verts.append(Vector3(cos(a) * r, h - 2.0 if i == 0 else h, sin(a) * r))
 			var g := 0.25 + 0.15 * ridge
 			cols.append(Color(g * 0.7, g + 0.1, g * 0.55))
@@ -181,9 +182,8 @@ static func outskirts(parent: Node3D, trees, city_half: float) -> void:
 	var tries := 0
 	while placed < 1400 and tries < 12000:
 		tries += 1
-		var a := rng.randf() * TAU
-		var r := rng.randf_range(city_half + 25.0, 1000.0)
-		var p := Vector2(cos(a), sin(a)) * r
+		# nur auf der Halbinsel im Norden (sonst ist es Wasser)
+		var p := Vector2(rng.randf_range(-465.0, 465.0), -rng.randf_range(city_half + 25.0, 1900.0))
 		var dens := fn.get_noise_2d(p.x, p.y) * 0.5 + 0.5
 		if rng.randf() > dens * 1.3:
 			continue

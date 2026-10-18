@@ -58,6 +58,36 @@ static func roof() -> ShaderMaterial:
 	return _c["roof"]
 
 
+# LED-Werbeflaeche (animiert)
+static func screen() -> ShaderMaterial:
+	if not _c.has("screen"):
+		var m := ShaderMaterial.new()
+		m.shader = shader("res://scripts/city_screen.gdshader")
+		_c["screen"] = m
+	return _c["screen"]
+
+
+# Dampfpuffs (Billboard-MultiMesh)
+static func steam() -> ShaderMaterial:
+	if not _c.has("steam"):
+		var m := ShaderMaterial.new()
+		m.shader = shader("res://scripts/city_steam.gdshader")
+		_noise(m, ["blotch"])
+		m.render_priority = 2
+		_c["steam"] = m
+	return _c["steam"]
+
+
+# Wasser (Fluss/Teich)
+static func water() -> ShaderMaterial:
+	if not _c.has("water"):
+		var m := ShaderMaterial.new()
+		m.shader = shader("res://scripts/city_water.gdshader")
+		_noise(m, ["blotch", "grain"])
+		_c["water"] = m
+	return _c["water"]
+
+
 # Eisengitter: 0 Rost, 1 Gelaender, 2 Zaunstaebe, 3 Netz
 static func iron(kind: int, col: Color = Color(0.045, 0.05, 0.05)) -> ShaderMaterial:
 	var key := "iron%d_%s" % [kind, col.to_html()]

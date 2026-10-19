@@ -8,7 +8,13 @@ varying vec4 cu;
 #include "res://scripts/ironman_suit.gdshaderinc"
 
 void vertex() {
-	rp = VERTEX;
+	vec3 q = VERTEX;
+	// Helm ist 8 % vergrössert (ironman_head.gd): Malerei in Helm-Koordinaten zurückrechnen
+	if (q.y > 1.548 && abs(q.x) < 0.14 && q.z < 0.2 && q.z > -0.16) {
+		vec3 c = vec3(0.0, 1.545, 0.01);
+		q = c + (q - c) / 1.08;
+	}
+	rp = q;
 	cu = CUSTOM0;
 }
 
@@ -34,13 +40,13 @@ void fragment() {
 		float seg = step(0.5, fract(UV.x * 10.0));
 		float zone = smoothstep(0.25, 0.4, c) * (1.0 - smoothstep(0.62, 0.78, c));
 		float k = mix(1.0, 0.45 + 0.55 * seg, zone);
-		emi = mix(vec3(0.30, 0.62, 1.0), vec3(0.95, 1.0, 1.0), smoothstep(0.55, 1.0, c)) * (1.6 + 1.8 * c) * k;
+		emi = mix(vec3(0.20, 0.50, 1.0), vec3(0.75, 0.90, 1.0), smoothstep(0.55, 1.0, c)) * (0.45 + 0.9 * c * c) * k;
 		col = vec3(0.7, 0.9, 1.0);
 	}
 	if (id == 6) {
 		vec2 cell;
 		float hd = im_hex(p.xy * 90.0, cell);
-		float line = 1.0 - smoothstep(0.0, 0.07 + w * 90.0, hd);
+		float line = (1.0 - smoothstep(0.0, 0.07 + w * 90.0, hd)) * (1.0 - smoothstep(0.0012, 0.0035, w) * 0.85);
 		float pit = smoothstep(0.0, 0.25, hd);
 		col = mix(im_lin(vec3(0.42, 0.43, 0.47)) * (0.7 + 0.5 * fract(sin(dot(cell, vec2(12.9, 78.2))) * 43758.5)), im_lin(vec3(0.02, 0.02, 0.025)), line);
 		met = 0.9;

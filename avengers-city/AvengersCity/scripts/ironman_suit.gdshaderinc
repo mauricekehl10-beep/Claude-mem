@@ -62,9 +62,10 @@ float im_scratch(vec3 p, float sd) {
 // ed = Abstand zum Rand der Platte in Metern (gross = weit weg), sd = Zufallsstart je Platte
 void im_mat(int id, int trim, vec3 p, float w, float ed, float sd,
 		out vec3 col, out float met, out float rou, out vec3 emi, out float hgt) {
-	vec3 red = im_lin(vec3(0.45, 0.028, 0.040));
-	vec3 gold = im_lin(vec3(0.76, 0.55, 0.21));
+	vec3 red = im_lin(vec3(0.31, 0.026, 0.038));
+	vec3 gold = im_lin(vec3(0.70, 0.54, 0.25));
 	vec3 silver = im_lin(vec3(0.50, 0.53, 0.62));
+	vec3 gun = im_lin(vec3(0.47, 0.47, 0.58));
 	vec3 dark = im_lin(vec3(0.040, 0.040, 0.052));
 	vec3 bare = im_lin(vec3(0.62, 0.52, 0.38)); // blankes Metall unter dem Lack
 	emi = vec3(0.0);
@@ -75,17 +76,25 @@ void im_mat(int id, int trim, vec3 p, float w, float ed, float sd,
 	float fine = mix(im_n3(p * 520.0 + sd), 0.5, lod);
 	bool painted = id == 0 || id == 8;
 	if (painted) {
-		col = red * (0.72 + 0.6 * low) * (0.94 + 0.12 * fine);
-		met = 0.40;
-		rou = 0.28 + 0.10 * mid;
+		col = red * (0.66 + 0.7 * low) * (0.94 + 0.12 * fine);
+		met = 0.45;
+		rou = 0.34 + 0.12 * mid;
 	} else if (id == 1 || id == 7) {
-		col = gold * (0.68 + 0.6 * low) * mix(vec3(1.0), vec3(0.80, 0.76, 0.52), 0.55 * mid) * (0.95 + 0.1 * fine);
+		col = gold * (0.62 + 0.62 * low) * mix(vec3(1.0), vec3(0.78, 0.70, 0.42), 0.75 * mid) * (0.95 + 0.1 * fine);
 		met = 0.70;
 		rou = 0.30 + 0.16 * mid;
 	} else if (id == 2) {
 		col = silver * (0.70 + 0.5 * low) * mix(vec3(1.0), vec3(0.80, 0.85, 1.0), mid) * (0.96 + 0.08 * fine);
 		met = 0.72;
 		rou = 0.26 + 0.14 * mid;
+	} else if (id == 10) {
+		col = gun * (0.72 + 0.55 * low) * mix(vec3(1.0), vec3(0.82, 0.80, 0.95), mid) * (0.96 + 0.08 * fine);
+		met = 0.82;
+		rou = 0.28 + 0.16 * mid;
+	} else if (id == 9) {
+		col = dark * (0.7 + 0.6 * low);
+		met = 0.0;
+		rou = 0.62 + 0.2 * mid;
 	} else if (id == 4) {
 		col = silver * (0.8 + 0.4 * low);
 		met = 1.0;
@@ -101,9 +110,11 @@ void im_mat(int id, int trim, vec3 p, float w, float ed, float sd,
 		rou = 0.42;
 	}
 	// Plattenfuge und Zierlinien (Relief fängt Licht)
-	float groove = 1.0 - smoothstep(0.0006, 0.0018, ed);
-	col *= 1.0 - 0.80 * groove;
-	hgt -= groove * 0.0014;
+	float groove = 1.0 - smoothstep(0.0012, 0.0036, ed);
+	col *= 1.0 - 0.88 * groove;
+	col *= 1.0 - 0.20 * (1.0 - smoothstep(0.0, 0.016, ed));
+	met = mix(met, min(met + 0.25, 1.0), smoothstep(0.0036, 0.0050, ed) * (1.0 - smoothstep(0.0050, 0.0075, ed)));
+	hgt -= groove * 0.0022;
 	if (trim == 1) {
 		float tl = im_cov(abs(ed - 0.0065) - 0.0020, w);
 		col = mix(col, gold * (0.75 + 0.4 * mid), tl * 0.9);
@@ -139,6 +150,12 @@ void im_mat(int id, int trim, vec3 p, float w, float ed, float sd,
 		col = mix(col, bare, wear * 0.7);
 		met = mix(met, 1.0, wear);
 		rou = mix(rou, 0.42, wear);
+	} else if (id == 10) {
+		col = mix(col, gold * 0.85, wear * 0.75);
+		met = mix(met, 0.9, wear);
+		rou = mix(rou, 0.42, wear * 0.7);
+	} else if (id == 9) {
+		rou = mix(rou, 0.8, wear);
 	} else {
 		col = mix(col, col * vec3(0.72, 0.66, 0.5), wear * 0.6);
 		rou = mix(rou, 0.5, wear * 0.7);
@@ -147,9 +164,13 @@ void im_mat(int id, int trim, vec3 p, float w, float ed, float sd,
 	col = mix(col, col * vec3(0.9, 0.82, 0.7), dirt * 0.4);
 	rou = mix(rou, 0.5, dirt * 0.5);
 	// Kratzer: helle Metallspuren im Lack
-	float sc = im_scratch(p, sd) * (1.0 - lod) * (id == 5 ? 0.0 : 1.0);
+	float sc = 0.0;
+	if (lod < 0.98 && id != 5 && id != 9) {
+		sc = im_scratch(p, sd) * (1.0 - lod) * ((id == 2 || id == 10) ? 0.45 : 1.0);
+	}
+	hgt += (mid - 0.5) * 0.0006 * (1.0 - lod);
 	vec3 sccol = painted ? bare * 1.2 : col * 1.4 + vec3(0.04);
-	col = mix(col, sccol, sc * 0.6);
+	col = mix(col, sccol, sc * 0.36);
 	met = mix(met, 1.0, sc * 0.5);
 	rou = mix(rou, 0.40, sc * 0.5);
 	hgt -= sc * 0.0002;
@@ -182,7 +203,7 @@ void im_face(vec3 p, float w, inout vec3 col, inout float met, inout float rou, 
 	float h2;
 	im_mat(8, 0, p, w, abs(dc), 5.0, c2, m2, r2, e2, h2);
 	float crest = im_cov(dc, w) * front;
-	col = mix(col, c2, crest);
+	col = mix(col, c2 * 0.42, crest);
 	met = mix(met, m2, crest);
 	rou = mix(rou, r2, crest);
 	line = max(line, im_cov(abs(dc) - 0.0007, w) * front);
@@ -191,11 +212,11 @@ void im_face(vec3 p, float w, inout vec3 col, inout float met, inout float rou, 
 	vec2 eb = vec2(0.0610, 1.6805);
 	vec2 eba = eb - ea;
 	float eh = clamp(dot(vec2(ax, y) - ea, eba) / dot(eba, eba), 0.0, 1.0);
-	float de = length(vec2(ax, y) - (ea + eba * eh)) - mix(0.0046, 0.0012, pow(eh, 0.8));
+	float de = length(vec2(ax, y) - (ea + eba * eh)) - mix(0.0030, 0.0009, pow(eh, 0.8));
 	float eye = im_cov(de, w) * front;
 	vec3 ecol = mix(vec3(0.55, 0.80, 1.0), vec3(1.0), smoothstep(0.0, -0.0028, de));
 	col = mix(col, ecol, eye);
-	emi += ecol * eye * 4.5;
+	emi += ecol * eye * 3.2;
 	met = mix(met, 0.0, eye);
 	line = max(line, im_cov(abs(de - 0.0017) - 0.0007, w) * front * (1.0 - eye));
 	// Schein der Augen auf dem Gold
@@ -221,9 +242,7 @@ void im_helm(vec3 p, float w, inout vec3 col, inout float met, inout float rou, 
 	// Ohrscheibe (seitlich): Ring und leicht anderer Ton
 	vec2 q = vec2(p.z - 0.0, p.y - 1.665);
 	float de = length(q * vec2(1.0, 1.15)) - 0.030;
-	float side = smoothstep(0.065, 0.085, ax);
-	line = max(line, im_cov(abs(de) - 0.0010, w) * side);
-	col = mix(col, col * 1.15, im_cov(de, w) * side * 0.4);
+	float side = 0.0;
 	// Rille zwischen Schale und Kinn-/Nackenteil
 	line = max(line, im_cov(abs(p.y - 1.585 - ax * 0.35) - 0.0010, w) * side * (1.0 - smoothstep(0.0, 0.03, p.z - 0.02)) * 0.0);
 	col = mix(col, col * 0.2, line * 0.9);
@@ -265,15 +284,6 @@ void iron_body(vec3 p, float w, out vec3 col, out float met, out float rou, out 
 	if (arm && ax > 0.74) {
 		col *= 0.8;
 		// Handfläche (unten): Repulsor mit Ring und leuchtender Mitte
-		float r = length(vec2(ax - 0.80, p.z + 0.06));
-		float under = 1.0 - smoothstep(1.405, 1.418, p.y);
-		float ring = im_cov(abs(r - 0.0295) - 0.0045, w) * under;
-		float core = im_cov(r - 0.0235, w) * under;
-		col = mix(col, im_lin(vec3(0.62, 0.64, 0.7)), ring);
-		met = mix(met, 1.0, ring);
-		rou = mix(rou, 0.25, ring);
-		col = mix(col, vec3(0.75, 0.93, 1.0), core);
-		emi = vec3(0.55, 0.88, 1.0) * core * 4.0;
-		met = mix(met, 0.0, core);
+		col *= 0.9;
 	}
 }

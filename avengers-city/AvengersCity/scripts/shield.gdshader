@@ -74,6 +74,8 @@ void fragment() {
 	col = mix(col, vec3(0.012), line * 0.55);
 	// Kratzer: feine, lange Striche in zwei Richtungen
 	float fade = 1.0 - smoothstep(0.0015, 0.006, wm);
+	col *= 0.95 + 0.10 * mix(0.5, vn3(vec3(r * 420.0, atan(q.y, q.x) * 1.5, 1.5)), fade); // Drehspuren (gebürstet)
+	col = mix(col, steel * 0.9, smoothstep(0.965, 0.995, r) * 0.6);                       // Rand blank gescheuert
 	float sc1 = smoothstep(0.80, 0.93, vn3(vec3(lp.x * 520.0 + lp.z * 160.0, lp.z * 22.0 - lp.x * 9.0, 0.5)));
 	float sc2 = smoothstep(0.82, 0.94, vn3(vec3(lp.z * 480.0 - lp.x * 200.0, lp.x * 26.0 + lp.z * 10.0, 3.5)));
 	float scratch = max(sc1, sc2) * fade;

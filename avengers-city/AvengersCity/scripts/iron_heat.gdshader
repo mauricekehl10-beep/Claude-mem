@@ -31,6 +31,6 @@ void fragment() {
 	// Schlieren laufen mit der Zeit nach hinten
 	float ang = atan(NORMAL.x, NORMAL.z) * 1.5;
 	float n = vnoise(vec2(vt * 9.0 - TIME * 7.0 + seed, ang * 2.0 + seed)) * 0.6 + vnoise(vec2(vt * 21.0 - TIME * 13.0, ang * 3.0 + TIME * 2.0)) * 0.4;
-	float a = edge * along * smoothstep(0.35, 0.8, n) * amount;
-	ALBEDO = vec3(1.0, 0.93, 0.8) * a * 0.22;
+	float a = edge * along * smoothstep(0.3, 0.95, n) * amount;
+	ALBEDO = vec3(1.0, 0.85, 0.65) * a * 0.12;
 }

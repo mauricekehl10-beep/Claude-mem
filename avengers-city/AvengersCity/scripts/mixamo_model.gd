@@ -33,9 +33,11 @@ const SKIN := Color(0.93, 0.72, 0.58)
 const GOLD := Color(0.96, 0.74, 0.24)
 const DARK := Color(0.12, 0.13, 0.16)
 const SUIT = preload("res://scripts/hero_suit.gdshader")
+const CAP_SUIT = preload("res://scripts/captain_body.gdshader")
 const Parts = preload("res://scripts/hero_parts.gd")
 const Face = preload("res://scripts/hero_face.gd")
 const IronSuit = preload("res://scripts/ironman_suit.gd")
+const CapBody = preload("res://scripts/captain_body.gd")
 
 static var _cache := {}  # fertig gebaute Netze pro Held
 
@@ -133,8 +135,9 @@ static func _paint(mi: MeshInstance3D, hero: int) -> void:
 		_cache[key] = _bake(mi.mesh, hero, "Surface" in mi.name)
 	mi.mesh = _cache[key]
 	var m := ShaderMaterial.new()
-	m.shader = SUIT
-	m.set_shader_parameter("hero", hero)
+	m.shader = CAP_SUIT if hero == 0 else SUIT  # Captain: eigener Shader (captain_body.gdshader)
+	if hero != 0:
+		m.set_shader_parameter("hero", hero)
 	m.set_shader_parameter("joint", "Joints" in mi.name)
 	mi.material_override = m
 
@@ -157,6 +160,9 @@ static func _bake(src: Mesh, hero: int, face: bool = false) -> Mesh:
 	for i in range(n):
 		var k := Vector3i((verts[i] * 2000.0).round())
 		acc[k] = acc.get(k, Vector3.ZERO) + norms[i]
+	var cols := PackedColorArray()  # Captain: Verdeckung je Punkt (COLOR.r)
+	if hero == 0:
+		cols.resize(n)
 	var cust := PackedFloat32Array()
 	cust.resize(n * 4)
 	for i in range(n):
@@ -169,7 +175,14 @@ static func _bake(src: Mesh, hero: int, face: bool = false) -> Mesh:
 		cust[i * 4 + 3] = fh
 		if fh != 0.0 or (face and p.y > 1.53 and p.z > -0.02):
 			norms[i] = Face.normal(hero, p, norms[i])
-		verts[i] = p + dir.normalized() * (_bulk(hero, p) + fh)
+		if hero == 0:
+			verts[i] = CapBody.shape(p) + dir.normalized() * (CapBody.bulk(p) + fh)  # Captain: Körperform (captain_body.gd)
+			cols[i] = Color(CapBody.occlusion(p, norms[i]), 0.0, 0.0, 1.0)
+		else:
+			verts[i] = p + dir.normalized() * (_bulk(hero, p) + fh)
+	if hero == 0:
+		norms = _relight(arrays, verts, norms, cust)
+		arrays[Mesh.ARRAY_COLOR] = cols
 	arrays[Mesh.ARRAY_VERTEX] = verts
 	arrays[Mesh.ARRAY_NORMAL] = norms
 	arrays[Mesh.ARRAY_CUSTOM0] = cust
@@ -179,6 +192,32 @@ static func _bake(src: Mesh, hero: int, face: bool = false) -> Mesh:
 	var nm := ArrayMesh.new()
 	nm.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays, [], {}, flags)
 	return nm
+
+
+# Normalen nach der Verformung neu aus den Dreiecken (Rumpf, Arme, Beine; der Kopf behält seine)
+static func _relight(arrays: Array, verts: PackedVector3Array, norms: PackedVector3Array, cust: PackedFloat32Array) -> PackedVector3Array:
+	var idx: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
+	var acc := {}
+	for t in range(idx.size() / 3):
+		var a := idx[t * 3]
+		var b := idx[t * 3 + 1]
+		var c := idx[t * 3 + 2]
+		var fn := (verts[b] - verts[a]).cross(verts[c] - verts[a])
+		for k in [a, b, c]:
+			var key := Vector3i((Vector3(cust[k * 4], cust[k * 4 + 1], cust[k * 4 + 2]) * 2000.0).round())
+			acc[key] = acc.get(key, Vector3.ZERO) + fn
+	for i in range(verts.size()):
+		if cust[i * 4 + 1] > 1.53:
+			continue
+		var key := Vector3i((Vector3(cust[i * 4], cust[i * 4 + 1], cust[i * 4 + 2]) * 2000.0).round())
+		var nn: Vector3 = acc[key]
+		if nn.length_squared() < 1e-14:
+			continue
+		nn = nn.normalized()
+		if nn.dot(norms[i]) < 0.0:
+			nn = -nn  # Umlaufrichtung der Dreiecke: auf die Seite der alten Normale drehen
+		norms[i] = nn
+	return norms
 
 
 # 1 zwischen a und b (mit weichem Rand r), sonst 0

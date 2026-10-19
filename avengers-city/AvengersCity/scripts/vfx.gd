@@ -546,6 +546,25 @@ static func impact(parent: Node, pos: Vector3, normal: Vector3 = Vector3.UP, col
 		_dust(fx, n, 60.0, 4, 0.55, 0.4, 1.4, 0.35, Color(0.62, 0.57, 0.52, 0.4))
 
 
+# Farben des Repulsor-Schusses (warm, passend zu den roten Düsenflammen und zur warmen Handflächen-Linse)
+static func _rep_mat(key: String) -> Material:
+	var k := "rep_" + key
+	if _cache.has(k):
+		return _cache[k]
+	var m: Material
+	match key:
+		"core":
+			m = _solid_mat(Color(1.0, 0.92, 0.7), 6.0)
+		"halo":
+			m = _flare_mat(Color(1.0, 0.5, 0.16), 2.0, 1.0, 0.0, 0.0, 1.0)
+		"star":
+			m = _flare_mat(Color(1.0, 0.8, 0.5), 2.2, 0.5, 1.0, 0.0, 1.0)
+		"charge":
+			m = _flare_mat(Color(1.0, 0.62, 0.25), 3.0, 1.0, 0.4, 0.0, 1.0)
+	_cache[k] = m
+	return m
+
+
 # Geschoss von Iron Man: leuchtender Kern, Glühen, Schweif. Das Geschoss hängt schon an "parent";
 # der Aufrufer setzt global_position und löscht es mit queue_free() (der Schweif klingt von selbst aus).
 static func repulsor_shot(parent: Node) -> Node3D:
@@ -558,17 +577,17 @@ static func repulsor_shot(parent: Node) -> Node3D:
 	sm.radial_segments = 12
 	sm.rings = 6
 	core.mesh = sm
-	core.material_override = _mat("core_blue")
+	core.material_override = _rep_mat("core")
 	core.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	root.add_child(core)
-	for k in [["shot_halo", 0.45], ["shot_star", 0.6]]:
+	for k in [["halo", 0.40], ["star", 0.55]]:
 		var mi := MeshInstance3D.new()
 		mi.mesh = _quad()
-		mi.material_override = _mat(k[0])
+		mi.material_override = _rep_mat(k[0])
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		mi.scale = Vector3.ONE * k[1]
 		root.add_child(mi)
-	_trail(parent, root, 0.045, 0.22, Color(0.55, 0.88, 1.0), false)
+	_trail(parent, root, 0.045, 0.22, Color(1.0, 0.58, 0.2), false)
 	return root
 
 
@@ -577,7 +596,7 @@ static func repulsor_charge(parent: Node3D) -> void:
 	var fx := _spawn(parent, 0.5, Vector3.ZERO, false)
 	if fx == null:
 		return
-	_flare(fx, "charge_glow", 0.65, 0.35)
+	_flare(fx, "charge_glow", 0.65, 0.35).material_override = _rep_mat("charge")
 	var p := _burst(_quad(), _mat("glow"), 14, 0.28)
 	p.local_coords = true
 	p.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE_SURFACE
@@ -589,7 +608,7 @@ static func repulsor_charge(parent: Node3D) -> void:
 	p.scale_amount_min = 0.05
 	p.scale_amount_max = 0.09
 	p.scale_amount_curve = _curve("pop")
-	p.color = Color(0.5, 0.9, 1.0, 1.0) * 2.5
+	p.color = Color(1.0, 0.6, 0.25, 1.0) * 2.5
 	_go(fx, p)
 
 

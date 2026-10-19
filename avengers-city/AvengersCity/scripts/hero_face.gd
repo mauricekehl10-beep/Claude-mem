@@ -5,6 +5,7 @@ extends RefCounted
 
 const EDGE := 0.0052  # Zielkantenlänge im Gesicht (Meter)
 const CapSuit = preload("res://scripts/captain_suit.gd")
+const CapBody = preload("res://scripts/captain_body.gd")
 
 
 static func g(x: float, s: float) -> float:
@@ -176,7 +177,7 @@ static func height(hero: int, p: Vector3) -> float:
 		# Haube (captain_suit.gd): dicker als die Haut, wulstiger Rand um Gesicht und Augenlöcher
 		var d := CapSuit.open_d(ax, y)
 		var cowl := smoothstep(-0.0015, 0.0035, d)
-		var h := human(ax, y, 1.0) * (1.0 - cowl) + CapSuit.COWL * cowl
+		var h := CapBody.face(ax, y) * (1.0 - cowl) + CapSuit.COWL * cowl
 		h += 0.0016 * g(d - 0.0030, 0.0020)
 		return h * front if y > 1.54 else 0.0
 	elif hero == 1:

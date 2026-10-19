@@ -44,6 +44,7 @@ class Jet:
 	var sparks: CPUParticles3D
 	var smoke: CPUParticles3D
 	var thr := 0.0  # Schub (geglättet)
+	var seed := 0.0
 	var dir := Vector3.DOWN
 
 
@@ -80,9 +81,9 @@ func _build() -> void:
 		i += 1
 	light = OmniLight3D.new()
 	light.top_level = true
-	light.light_color = Color(1.0, 0.72, 0.42)
+	light.light_color = Color(1.0, 0.58, 0.28)
 	light.light_energy = 0.0
-	light.omni_range = 8.0
+	light.omni_range = 5.0
 	light.omni_attenuation = 1.6
 	light.shadow_enabled = false
 	add_child(light)
@@ -96,30 +97,31 @@ func _top(n: Node3D) -> void:
 
 func _make_jet(j: Jet, i: int) -> void:
 	var seed := float(i) * 1.9
-	# Flamme
+	j.seed = seed
+	# Flamme: heisser gelb-weisser Kern, orange Mitte, roter Rand (kein Blau). Hände etwas röter als die Füsse.
 	j.fmat = ShaderMaterial.new()
 	j.fmat.shader = FLAME_SH
 	j.fmat.set_shader_parameter("seed", seed)
-	# Füsse: weisser Kern, warmer Rand (Düsenflamme im Film), Hände: blau-weisser Repulsor
 	if j.hand:
-		j.fmat.set_shader_parameter("core_col", Color(0.97, 0.99, 1.0))
-		j.fmat.set_shader_parameter("mid_col", Color(0.72, 0.88, 1.0))
-		j.fmat.set_shader_parameter("edge_col", Color(0.35, 0.62, 1.0))
+		j.fmat.set_shader_parameter("core_col", Color(1.0, 0.95, 0.72))
+		j.fmat.set_shader_parameter("mid_col", Color(1.0, 0.58, 0.14))
+		j.fmat.set_shader_parameter("edge_col", Color(0.92, 0.17, 0.04))
 	else:
-		j.fmat.set_shader_parameter("core_col", Color(1.0, 0.98, 0.92))
-		j.fmat.set_shader_parameter("mid_col", Color(1.0, 0.84, 0.52))
-		j.fmat.set_shader_parameter("edge_col", Color(1.0, 0.48, 0.16))
+		j.fmat.set_shader_parameter("core_col", Color(1.0, 0.97, 0.80))
+		j.fmat.set_shader_parameter("mid_col", Color(1.0, 0.70, 0.20))
+		j.fmat.set_shader_parameter("edge_col", Color(1.0, 0.33, 0.06))
 	j.flame = MeshInstance3D.new()
 	j.flame.mesh = cone
 	j.flame.material_override = j.fmat
 	j.flame.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	j.flame.visible = false
 	_top(j.flame)
+	# Mantel: etwas breiter, rot, durchscheinend (gibt der Flamme den roten Rand)
 	j.pmat = j.fmat.duplicate()
-	j.pmat.set_shader_parameter("grow", 1.0)
-	j.pmat.set_shader_parameter("alpha_mul", 0.32)
-	j.pmat.set_shader_parameter("mid_col", Color(0.62, 0.8, 1.0) if j.hand else Color(1.0, 0.7, 0.36))
-	j.pmat.set_shader_parameter("edge_col", Color(0.4, 0.65, 1.0) if j.hand else Color(1.0, 0.45, 0.14))
+	j.pmat.set_shader_parameter("alpha_mul", 0.45)
+	j.pmat.set_shader_parameter("core_col", Color(1.0, 0.55, 0.15))
+	j.pmat.set_shader_parameter("mid_col", Color(1.0, 0.36, 0.08))
+	j.pmat.set_shader_parameter("edge_col", Color(0.85, 0.12, 0.03))
 	j.plume = MeshInstance3D.new()
 	j.plume.mesh = cone
 	j.plume.material_override = j.pmat
@@ -140,7 +142,7 @@ func _make_jet(j: Jet, i: int) -> void:
 	j.gmat = ShaderMaterial.new()
 	j.gmat.shader = GLOW_SH
 	j.gmat.set_shader_parameter("seed", seed)
-	j.gmat.set_shader_parameter("tint", Color(0.7, 0.85, 1.0) if j.hand else Color(1.0, 0.86, 0.62))
+	j.gmat.set_shader_parameter("tint", Color(1.0, 0.82, 0.55) if j.hand else Color(1.0, 0.78, 0.45))
 	j.glow = MeshInstance3D.new()
 	j.glow.mesh = quad
 	j.glow.material_override = j.gmat
@@ -148,28 +150,28 @@ func _make_jet(j: Jet, i: int) -> void:
 	j.glow.visible = false
 	_top(j.glow)
 	# Funken (nur Füsse und beim Start auch Hände)
-	j.sparks = _particles(6, 0.16 if not j.hand else 0.1, 0.8, Color(1.0, 0.86, 0.55, 0.9), false)
+	j.sparks = _particles(6, 0.16 if not j.hand else 0.1, 0.7, Color(1.0, 0.72, 0.3, 0.9), false)
 	j.sparks.direction = Vector3(0, -1, 0)
-	j.sparks.spread = 22.0
-	j.sparks.initial_velocity_min = 4.0
-	j.sparks.initial_velocity_max = 9.0
-	j.sparks.gravity = Vector3(0, -7.0, 0)
-	j.sparks.amount = 22 if not j.hand else 10
-	j.sparks.scale_amount_min = 0.03
-	j.sparks.scale_amount_max = 0.03
+	j.sparks.spread = 18.0
+	j.sparks.initial_velocity_min = 2.5
+	j.sparks.initial_velocity_max = 6.0
+	j.sparks.gravity = Vector3(0, -6.0, 0)
+	j.sparks.amount = 12 if not j.hand else 6
+	j.sparks.scale_amount_min = 0.02
+	j.sparks.scale_amount_max = 0.025
 	j.sparks.emitting = false
 	_top(j.sparks)
-	# Dampfspur (Kondensstreifen)
-	j.smoke = _particles(1, 1.0, 2.4, Color(0.95, 0.96, 0.98, 0.34), false)
+	# Dampfspur (feiner Kondensstreifen, nur bei Tempo)
+	j.smoke = _particles(1, 1.0, 1.4, Color(0.95, 0.92, 0.88, 0.14), false)
 	j.smoke.direction = Vector3(0, -1, 0)
-	j.smoke.spread = 8.0
-	j.smoke.initial_velocity_min = 0.2
-	j.smoke.initial_velocity_max = 0.9
+	j.smoke.spread = 6.0
+	j.smoke.initial_velocity_min = 0.1
+	j.smoke.initial_velocity_max = 0.5
 	j.smoke.gravity = Vector3.ZERO
-	j.smoke.amount = 44
-	j.smoke.scale_amount_curve = _grow(0.5, 2.6)
-	j.smoke.scale_amount_min = 0.4
-	j.smoke.scale_amount_max = 0.4
+	j.smoke.amount = 24
+	j.smoke.scale_amount_curve = _grow(0.5, 2.2)
+	j.smoke.scale_amount_min = 0.12
+	j.smoke.scale_amount_max = 0.12
 	j.smoke.emitting = false
 	_top(j.smoke)
 
@@ -224,10 +226,10 @@ func _make_dust() -> void:
 	dust.gravity = Vector3(0, -0.3, 0)
 	dust.damping_min = 1.5
 	dust.damping_max = 3.0
-	dust.amount = 28
+	dust.amount = 18
 	dust.scale_amount_curve = _grow(0.5, 2.4)
-	dust.scale_amount_min = 0.7
-	dust.scale_amount_max = 0.7
+	dust.scale_amount_min = 0.4
+	dust.scale_amount_max = 0.4
 	dust.emitting = false
 	_top(dust)
 	burst = _particles(1, 1.0, 0.9, Color(0.8, 0.76, 0.7, 0.22), false)
@@ -240,12 +242,12 @@ func _make_dust() -> void:
 	burst.gravity = Vector3(0, -0.4, 0)
 	burst.damping_min = 2.0
 	burst.damping_max = 4.0
-	burst.amount = 40
+	burst.amount = 24
 	burst.scale_amount_curve = _grow(0.5, 2.4)
 	burst.one_shot = true
 	burst.explosiveness = 1.0
-	burst.scale_amount_min = 1.4
-	burst.scale_amount_max = 1.4
+	burst.scale_amount_min = 0.8
+	burst.scale_amount_max = 0.8
 	burst.emitting = false
 	_top(burst)
 
@@ -314,9 +316,10 @@ func _process(delta: float) -> void:
 		want = (body_down * 0.65 + (-v / sp) * 0.35 * smoothstep(4.0, 12.0, sp)).normalized()
 	down = down.lerp(want, 1.0 - exp(-12.0 * delta)).normalized()
 	# Schub je Phase (1 = Schweben)
-	var thr_foot := (0.55 + 0.55 * s_rise + 0.30 * s_f + 0.20 * s_flare) * (1.0 - 0.45 * s_br)
-	thr_foot += 1.35 * boost
-	var thr_hand := 0.30 + 0.30 * s_rise + 0.20 * s_flare + 0.85 * s_br - 0.2 * s_f + 0.1 * boost
+	var thr_foot := (0.45 + 0.50 * s_rise + 0.35 * s_f + 0.15 * s_flare) * (1.0 - 0.45 * s_br)
+	thr_foot += 0.9 * boost
+	# Hände: Schweben klein, Reiseflug kurzer Strahl, Boost etwas mehr, Bremsen und Start kräftiger
+	var thr_hand := 0.35 + 0.30 * s_rise + 0.15 * s_flare + 0.55 * s_br + 0.35 * s_f + 0.25 * boost
 	var k := 1.0 - exp(-10.0 * delta)
 	var mid := Vector3.ZERO
 	var nfeet := 0
@@ -343,7 +346,7 @@ func _process(delta: float) -> void:
 		# warmes Licht am Boden unter den Füssen (stärker, je näher der Boden)
 		light.global_position = mid + down * 0.9
 		var near := 1.0 - smoothstep(0.0, 8.0, gd)
-		light.light_energy = (0.25 + 0.7 * near + 0.3 * boost) * clampf(thr_foot, 0.0, 1.6) * lvl
+		light.light_energy = (0.12 + 0.45 * near + 0.15 * boost) * clampf(thr_foot, 0.0, 1.6) * lvl
 	# Staub am Boden: Düsen blasen den Boden an
 	var blow := on and gd < 7.0 and thr_foot * lvl > 0.45 and v.y < 4.0 or (on and gd < 4.0 and s_rise > 0.2)
 	dust.emitting = blow
@@ -351,7 +354,7 @@ func _process(delta: float) -> void:
 		var near2 := 1.0 - smoothstep(0.0, 7.0, gd)
 		dust.global_position = gpt + Vector3(0, 0.08, 0)
 		dust.initial_velocity_max = 2.0 + 5.0 * near2
-		dust.color = Color(0.78, 0.74, 0.68, 0.06 + 0.2 * near2)
+		dust.color = Color(0.78, 0.74, 0.68, 0.04 + 0.14 * near2)
 	if ring_t < 1.0:
 		_ring(delta)
 
@@ -362,7 +365,7 @@ func _place(j: Jet, origin: Vector3, gs: float, sp: float, boost: float, s_rise:
 	var show: bool = th > 0.03
 	j.flame.visible = show
 	j.plume.visible = show and th > 0.2
-	j.heat.visible = show and th > 0.3
+	j.heat.visible = show and th > 1.0
 	j.glow.visible = show
 	if not show:
 		j.sparks.emitting = false
@@ -371,13 +374,18 @@ func _place(j: Jet, origin: Vector3, gs: float, sp: float, boost: float, s_rise:
 	# Grösse: Länge in Metern, Radius an der Düse
 	var ln: float
 	var rad: float
+	# Hände: Schweben ca. 15 cm, Reiseflug ca. 30 cm, Boost ca. 40 cm. Füsse: Schweben ca. 30 cm, Reiseflug ca. 50 cm, Boost bis ca. 1 m.
 	if j.hand:
-		ln = 0.22 + 0.40 * th
-		rad = 0.050 + 0.014 * th
+		ln = 0.07 + 0.30 * th
+		rad = 0.024 + 0.006 * minf(th, 1.3)
 	else:
-		ln = minf(0.55 + 0.80 * th + 0.35 * th * th, 3.0)
-		rad = 0.075 + 0.016 * minf(th, 1.6)
-	ln *= 1.0 + 0.2 * boost
+		ln = 0.12 + 0.42 * minf(th, 2.0)
+		rad = 0.038 + 0.008 * minf(th, 1.6)
+	ln *= 1.0 + 0.12 * boost
+	# Flackern: Länge und Breite zittern leicht und unregelmässig
+	var amp := 0.5 + 0.5 * clampf(th, 0.0, 1.0)  # beim Schweben ruhiger
+	var fl := 1.0 + amp * (0.07 * sin(t * 43.0 + j.seed * 5.0) + 0.05 * sin(t * 71.0 + j.seed * 2.3) + 0.03 * sin(t * 113.0 + j.seed))
+	ln *= fl
 	var y := -j.dir  # lokale +Y der Flamme zeigt zur Düse, die Spitze (-Y) zeigt in Schubrichtung
 	var xa := y.cross(Vector3.UP)
 	if xa.length() < 0.05:
@@ -385,35 +393,35 @@ func _place(j: Jet, origin: Vector3, gs: float, sp: float, boost: float, s_rise:
 	xa = xa.normalized()
 	var za := xa.cross(y).normalized()
 	# Kamera dicht an der Flamme (Blick von hinten): ausblenden, damit das Bild nicht weiss wird
-	var cf := smoothstep(0.9, 3.4, cam_pos.distance_to(origin + j.dir * ln * gs * 0.6))
+	var cf := smoothstep(0.35, 1.4, cam_pos.distance_to(origin + j.dir * ln * gs * 0.6))
 	var b := Basis(xa * rad * gs, y * ln * gs, za * rad * gs)
 	j.flame.global_transform = Transform3D(b, origin)
-	j.fmat.set_shader_parameter("energy", (1.4 + 0.8 * minf(th, 1.6)) * cf)
-	j.plume.global_transform = Transform3D(Basis(xa * rad * gs * 1.1, y * minf(ln * 1.25, 2.4) * gs, za * rad * gs * 1.1), origin)
-	j.pmat.set_shader_parameter("energy", (0.9 + 0.5 * minf(th, 1.6)) * cf)
-	# Wärmeflimmern: breiter und länger als die Flamme
+	j.fmat.set_shader_parameter("energy", (1.0 + 0.35 * minf(th, 1.6)) * cf)
+	j.plume.global_transform = Transform3D(Basis(xa * rad * gs * 1.7, y * ln * gs * 1.18, za * rad * gs * 1.7), origin)
+	j.pmat.set_shader_parameter("energy", (0.7 + 0.25 * minf(th, 1.6)) * cf)
+	# Wärmeflimmern: nur bei kräftigem Schub, etwas breiter und länger als die Flamme
 	if j.heat.visible:
-		var hb := Basis(xa * rad * gs * 2.6, y * ln * gs * 2.0, za * rad * gs * 2.6)
+		var hb := Basis(xa * rad * gs * 2.4, y * ln * gs * 1.5, za * rad * gs * 2.4)
 		j.heat.global_transform = Transform3D(hb, origin)
-		j.hmat.set_shader_parameter("amount", clampf((th - 0.3) * 1.2, 0.0, 1.0) * cf)
-	# Leuchtfleck
-	var gsz := (0.20 if not j.hand else 0.12) * gs * (0.7 + 0.3 * minf(th, 1.8))
-	j.glow.global_transform = Transform3D(Basis.from_scale(Vector3(gsz, gsz, gsz)), origin + j.dir * 0.03)
-	j.gmat.set_shader_parameter("energy", ((0.9 + 0.3 * minf(th, 1.6)) if j.hand else (1.0 + 0.4 * minf(th, 1.6))) * clampf(cf, 0.1, 1.0))
-	# Funken: bei kräftigem Schub (Start, Boost) an den Füssen, Hände nur beim Start
-	var spark_on := (th > 0.9 and not j.hand) or (s_rise > 0.4 and th > 0.45) or boost > 0.4 and not j.hand
+		j.hmat.set_shader_parameter("amount", clampf((th - 1.0) * 1.2, 0.0, 1.0) * cf)
+	# Leuchtfleck an der Düse (klein, kein Lichthof)
+	var gsz := (0.13 if not j.hand else 0.085) * gs * (0.75 + 0.25 * minf(th, 1.8))
+	j.glow.global_transform = Transform3D(Basis.from_scale(Vector3(gsz, gsz, gsz)), origin + j.dir * 0.02)
+	j.gmat.set_shader_parameter("energy", ((0.85 + 0.2 * minf(th, 1.6)) if j.hand else (0.85 + 0.25 * minf(th, 1.6))) * clampf(cf, 0.1, 1.0))
+	# Funken (sparsam): Füsse bei Start und Boost, Hände nur beim Start
+	var spark_on := (th > 1.25 and not j.hand) or (s_rise > 0.4 and th > 0.45 and not j.hand) or (s_rise > 0.6 and j.hand)
 	j.sparks.emitting = spark_on
 	if spark_on:
-		j.sparks.global_transform = Transform3D(Basis(xa, y, za), origin + j.dir * 0.1)
-		j.sparks.initial_velocity_max = 5.0 + 5.0 * minf(th, 1.5) + sp * 0.2
-	# Dampfspur bei Tempo (Kondensstreifen) und beim Start
-	var smoke_on := (sp > 9.0 or s_rise > 0.35) and th > 0.35 and (not j.hand or boost > 0.5)
+		j.sparks.global_transform = Transform3D(Basis(xa, y, za), origin + j.dir * 0.08)
+		j.sparks.initial_velocity_max = 3.0 + 2.5 * minf(th, 1.5) + sp * 0.12
+	# Dampfspur bei Tempo (dünner Kondensstreifen) und beim Start, nur an den Füssen
+	var smoke_on := (sp > 12.0 or s_rise > 0.35) and th > 0.5 and not j.hand
 	j.smoke.emitting = smoke_on
 	if smoke_on:
 		var dd := j.dir
-		j.smoke.global_transform = Transform3D(Basis(xa, y, za), origin + dd * (ln * gs * 0.55))
-		j.smoke.initial_velocity_max = 0.5 + 0.12 * sp
-		j.smoke.scale_amount_min = 0.4 + 0.5 * boost
+		j.smoke.global_transform = Transform3D(Basis(xa, y, za), origin + dd * (ln * gs * 0.6))
+		j.smoke.initial_velocity_max = 0.3 + 0.06 * sp
+		j.smoke.scale_amount_min = 0.12 + 0.12 * boost
 		j.smoke.scale_amount_max = j.smoke.scale_amount_min
 
 
@@ -434,9 +442,9 @@ func _touchdown(power_v: float, hero: bool) -> void:
 	var fp = player.get("fp")
 	var pt: Vector3 = player.global_position + Vector3(0, 0.05, 0)
 	burst.global_position = pt
-	burst.amount = 30 if hero else 14
+	burst.amount = 24 if hero else 10
 	burst.initial_velocity_max = 5.0 + minf(power_v, 18.0) * 0.5 if hero else 4.0
-	burst.scale_amount_min = 1.2 if hero else 0.8
+	burst.scale_amount_min = 0.8 if hero else 0.45
 	burst.scale_amount_max = burst.scale_amount_min
 	burst.restart()
 	burst.emitting = true
@@ -473,7 +481,7 @@ func _ring(delta: float) -> void:
 		burst_ring.visible = false
 		ring_t = 9.0
 		return
-	var r := (0.4 + (5.5 if hero else 2.2) * (1.0 - pow(1.0 - u, 2.5)))
+	var r := (0.4 + (4.0 if hero else 1.6) * (1.0 - pow(1.0 - u, 2.5)))
 	burst_ring.scale = Vector3(r, 0.04 + 0.12 * (1.0 - u), r)
 	var m := burst_ring.material_override as StandardMaterial3D
-	m.albedo_color.a = (0.5 if hero else 0.3) * (1.0 - u) * (1.0 - u)
+	m.albedo_color.a = (0.4 if hero else 0.2) * (1.0 - u) * (1.0 - u)

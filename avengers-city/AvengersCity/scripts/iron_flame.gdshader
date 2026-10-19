@@ -33,8 +33,8 @@ void fragment() {
 	float diam = 0.8 + 0.2 * sin(vt * 24.0 - TIME * 55.0 + seed);
 	float flick = 0.9 + 0.1 * sin(TIME * 47.0 + seed * 3.1) * sin(TIME * 29.0 + seed);
 	float a = body * along * mix(diam, 1.0, grow) * flick;
-	vec3 c = mix(core_col, mid_col, smoothstep(0.0, mix(0.55, 0.25, grow), vt));
-	c = mix(c, edge_col, smoothstep(mix(0.35, 0.15, grow), 1.0, vt));
+	vec3 c = mix(core_col, mid_col, smoothstep(0.08, mix(0.6, 0.25, grow), vt));
+	c = mix(c, edge_col, smoothstep(mix(0.45, 0.15, grow), 1.0, vt));
 	c = mix(edge_col, c, smoothstep(0.0, 0.8, body));
 	ALBEDO = c * a * energy;
 	ALPHA = clamp(a * alpha_mul, 0.0, 1.0);

@@ -1,6 +1,7 @@
-// Captain America (Avengers-Anzug): matter, gedeckter Stoff, Streifen, Stern, Gurte, Handschuhe, Stiefel, Haube.
-// Wird von hero_suit.gdshader eingebunden (braucht lin, cov, box2, seg, ln, star5 von dort und vn, gs, human_face
-// aus hero_face.gdshaderinc). Alle Maße sind Ruhepose-Koordinaten (Meter, +Z vorn, +X links).
+// Captain America (Avengers-Anzug): matter, gedeckter Stoff mit feinem Gewebe, Falten, Nähte, Steppung, Streifen, Stern,
+// Gurte, Lederhandschuhe, Stiefel, Haube. Wird von captain_body.gdshader (und hero_suit.gdshader) eingebunden
+// (braucht lin, cov, box2, seg, ln, star5 von dort und vn, gs, human_face aus hero_face.gdshaderinc).
+// Alle Maße sind Ruhepose-Koordinaten (Meter, +Z vorn, +X links; T-Pose: Arme entlang x, Handflächen nach unten).
 
 float cs_h3(vec3 p) {
 	return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453);
@@ -34,6 +35,28 @@ float cs_stitch(float d, float s, float w) {
 	return line * mix(1.0, dash, 1.0 - smoothstep(0.0012, 0.0035, w));
 }
 
+// Falten: geschlängelte Rippen (0..1, 1 = Kamm). c = Richtung quer zu den Falten (Meter), a = Richtung entlang,
+// freq = Falten je Meter, wob = Schlängeln.
+float cs_fold(float c, float a, float freq, float wob, float seed) {
+	float n = vn(vec2(a * 38.0 + seed * 7.0, c * freq * 0.25 + seed)) - 0.5;
+	float t = c * freq + n * wob + seed;
+	return 0.5 + 0.5 * sin(t * 6.2831853);
+}
+
+// feine Körnung (Leder, Stoff): -0.5..0.5, blendet bei grobem Pixel aus
+float cs_grain(vec3 p, float w, float sc) {
+	return (cs_vn3(p * sc) - 0.5) * (1.0 - smoothstep(0.0012, 0.0045, w));
+}
+
+// Leder: Maserung (Narben) und Abrieb
+vec3 cs_leather(vec3 base, vec3 p, float w) {
+	float f = 1.0 - smoothstep(0.0012, 0.0045, w);
+	float g = cs_vn3(p * 520.0);
+	float g2 = cs_vn3(p * 130.0);
+	float pits = smoothstep(0.55, 0.8, cs_vn3(p * 330.0)) * f;
+	return base * (0.80 + 0.30 * mix(0.5, g, f) + 0.35 * (g2 - 0.5)) * (1.0 - 0.18 * pits);
+}
+
 // Unterkante der Haube (Abstand von der Mitte -> Höhe), gleiche Werte wie YE_X/YE_Y in captain_suit.gd
 const float CS_YE_X[7] = float[7](0.0, 0.012, 0.030, 0.050, 0.068, 0.075, 0.095);
 const float CS_YE_Y[7] = float[7](1.642, 1.642, 1.622, 1.613, 1.606, 1.600, 1.598);
@@ -57,7 +80,9 @@ float cs_open(float ax, float y) {
 	return min(d_low, d_eye);
 }
 
-void cap(vec3 p, float w, out vec3 col, out float met, out float rou, out vec3 emi, out float hgt) {
+#include "res://scripts/captain_face.gdshaderinc"
+
+void cap2(vec3 p, float w, out vec3 col, out float met, out float rou, out vec3 emi, out float hgt, out float ao, out float rim) {
 	float ax = abs(p.x);
 	float y = p.y;
 	// Flächenrichtung in der Ruhepose (für das Stoffmuster auf allen Seiten)
@@ -71,15 +96,17 @@ void cap(vec3 p, float w, out vec3 col, out float met, out float rou, out vec3 e
 	vec3 pants = lin(vec3(0.265, 0.33, 0.45));
 	vec3 red = lin(vec3(0.54, 0.055, 0.155));
 	vec3 white = lin(vec3(0.72, 0.70, 0.69));
-	vec3 gray = lin(vec3(0.50, 0.50, 0.52));
+	vec3 gray = lin(vec3(0.60, 0.61, 0.63));
+	vec3 gray_dk = lin(vec3(0.34, 0.35, 0.38));
 	vec3 strap = lin(vec3(0.43, 0.43, 0.45));
 	vec3 leather = lin(vec3(0.20, 0.12, 0.11));
 	vec3 leather_hi = lin(vec3(0.33, 0.21, 0.18));
-	vec3 glove = lin(vec3(0.12, 0.09, 0.085));
+	vec3 glove = lin(vec3(0.15, 0.10, 0.095));
 	vec3 silver = lin(vec3(0.60, 0.60, 0.58));
 	vec3 gun = lin(vec3(0.22, 0.225, 0.24));
-	vec3 skin = lin(vec3(0.90, 0.68, 0.55));
+	vec3 skin = lin(vec3(0.88, 0.70, 0.62));
 	vec3 dust = lin(vec3(0.33, 0.30, 0.27));
+	vec3 soot = lin(vec3(0.09, 0.085, 0.085));
 
 	float front = smoothstep(0.0, 0.04, p.z);
 	float back = 1.0 - smoothstep(-0.04, 0.0, p.z);
@@ -88,33 +115,68 @@ void cap(vec3 p, float w, out vec3 col, out float met, out float rou, out vec3 e
 	float cl = cs_cloth(p, tw, w, 0.0055);
 	float mott = cs_vn3(p * 22.0) * 0.6 + cs_vn3(p * 61.0) * 0.4;
 	float grime = cs_vn3(p * 8.0 + 3.0);
+	float grain = cs_grain(p, w, 640.0);
+	float near_f = 1.0 - smoothstep(0.0015, 0.006, w); // 1 = ganz nah (Feinheiten zeigen)
 
 	col = blue;
 	met = 0.0;
-	rou = 0.82;
+	rou = 0.80;
 	emi = vec3(0.0);
+	ao = 1.0;
+	rim = 0.30;
 	float hh = 0.0;
 
 	// ------------------------------------------------ Hose
 	if (y < 1.06 && !arm) {
 		col = pants;
-		// Seitennaht und Innennaht
+		// Seitenpaneele etwas dunkler (Oberschenkel aussen), Seitennaht und Innennaht
 		float sx = mix(0.128, 0.178, smoothstep(0.3, 0.8, y));
+		float panel = smoothstep(sx - 0.004, sx + 0.004, ax) * smoothstep(0.34, 0.5, y);
+		col = mix(col, pants * 0.80, panel * 0.6);
 		float seam = cs_stitch(ax - sx, y, w) * smoothstep(0.34, 0.5, y);
 		col = mix(col, navy, seam * 0.7);
+		hh += ln(ax, sx, 0.0011, w) * smoothstep(0.34, 0.5, y) * 0.0012;
 		float inner = cs_stitch(ax - 0.022, y, w) * smoothstep(0.5, 0.7, y) * (1.0 - smoothstep(0.85, 0.95, y));
 		col = mix(col, navy, inner * 0.5);
-		// Knie: Nähte quer, Falten
-		float kn = max(ln(y, 0.585, 0.0012, w), ln(y, 0.47, 0.0012, w)) * front;
-		col = mix(col, navy, kn * 0.55);
-		hh -= kn * 0.0012;
-		// Falten an Hüfte und Knie (weiche dunkle Streifen, schräg)
-		float cr = smoothstep(0.62, 0.95, cs_vn3(vec3(p.x * 14.0, y * 44.0 + p.x * 20.0, p.z * 14.0)));
-		float cr_zone = smoothstep(0.62, 0.9, y) * (1.0 - smoothstep(1.0, 1.06, y)) + smoothstep(0.38, 0.46, y) * (1.0 - smoothstep(0.56, 0.62, y));
-		col *= 1.0 - 0.28 * cr * cr_zone;
-		hh += cr * cr_zone * 0.0008;
-		// Verwitterung: Staub am Saum, helle Scheuerstellen an Knie
-		col = mix(col, dust, 0.40 * (1.0 - smoothstep(0.0, 0.5, y)) * (0.35 + 0.65 * grime));
+		// Wade hinten: Mittelnaht
+		float cs_calf = cs_stitch(ax - 0.094, y, w) * back * smoothstep(0.36, 0.42, y) * (1.0 - smoothstep(0.50, 0.54, y));
+		col = mix(col, navy, cs_calf * 0.6);
+		// Knie: Polster aus drei Wülsten vorn, Quernähte, Kniekehle hinten
+		float kpad = front * smoothstep(0.075, 0.065, abs(ax - 0.094)) * smoothstep(0.455, 0.475, y) * (1.0 - smoothstep(0.585, 0.605, y));
+		float kr = 0.5 + 0.5 * sin((y - 0.47) / 0.135 * 3.0 * 6.2831853 - 1.5708);
+		col = mix(col, pants * 0.74, kpad * 0.45);
+		col = mix(col, navy * 0.8, kpad * smoothstep(0.55, 0.0, kr) * 0.30);
+		hh += kpad * (0.0030 + 0.0020 * kr);
+		ao *= 1.0 - 0.18 * kpad * (1.0 - kr);
+		float kn = max(ln(y, 0.585, 0.0013, w), ln(y, 0.47, 0.0013, w)) * front;
+		col = mix(col, navy, kn * 0.6);
+		hh -= kn * 0.0014;
+		// Falten: Leiste/Hüfte (schräg), Knie (quer), Kniekehle, Wade
+		float gr = cs_fold(y - 0.62 * ax, p.z + p.x * 0.6, 24.0, 0.9, 1.3);
+		float gz = front * smoothstep(0.62, 0.82, y) * (1.0 - smoothstep(0.99, 1.05, y)) * smoothstep(0.025, 0.06, ax) * (1.0 - smoothstep(0.17, 0.21, ax));
+		col *= 1.0 - 0.20 * gz * (1.0 - gr);
+		hh += gz * (gr - 0.5) * 0.0028;
+		ao *= 1.0 - 0.28 * gz * (1.0 - gr);
+		float kf = cs_fold(y, p.x * 1.0 + p.z, 52.0, 1.2, 2.1);
+		float kz = back * smoothstep(0.43, 0.48, y) * (1.0 - smoothstep(0.58, 0.64, y)) + front * smoothstep(0.62, 0.66, y) * (1.0 - smoothstep(0.72, 0.78, y)) * 0.0;
+		col *= 1.0 - 0.24 * kz * (1.0 - kf);
+		hh += kz * (kf - 0.5) * 0.0024;
+		ao *= 1.0 - 0.35 * kz * (1.0 - kf);
+		float wf = cs_fold(y, p.x + p.z * 0.5, 38.0, 1.0, 4.7);
+		float wz = smoothstep(0.36, 0.40, y) * (1.0 - smoothstep(0.44, 0.47, y)) * back;
+		col *= 1.0 - 0.18 * wz * (1.0 - wf);
+		// Steppung am Oberschenkel innen (feine Linien)
+		float qt = max(cs_stitch(abs(ax - 0.094) - 0.040, y, w), 0.0) * smoothstep(0.66, 0.70, y) * (1.0 - smoothstep(0.88, 0.92, y)) * (1.0 - front);
+		col = mix(col, navy, qt * 0.35);
+		// Gewebe und Körnung
+		col *= 1.0 + 0.10 * cl + 0.10 * grain * near_f;
+		hh += cl * 0.00016 * near_f;
+		// Verwitterung: Staub am Saum, Abrieb an Knien, Rußflecken
+		col = mix(col, dust, 0.34 * (1.0 - smoothstep(0.0, 0.5, y)) * (0.35 + 0.65 * grime));
+		col = mix(col, pants * 1.35, 0.30 * kpad * smoothstep(0.55, 0.9, cs_vn3(p * 55.0)));
+		col = mix(col, soot, 0.28 * smoothstep(0.62, 0.9, cs_vn3(p * 11.0 + 7.0)) * smoothstep(0.3, 0.9, y) * (1.0 - front * 0.5));
+		// Schritt / Gesäss: Falten, dunkler zwischen den Beinen
+		ao *= 1.0 - 0.45 * smoothstep(0.05, 0.0, ax) * smoothstep(0.55, 0.9, y);
 	}
 
 	// ------------------------------------------------ Rumpf
@@ -144,6 +206,13 @@ void cap(vec3 p, float w, out vec3 col, out float met, out float rou, out vec3 e
 		float wing2 = cov(abs(seg(vec2(ax, y), vec2(0.075, 1.385), vec2(0.150, 1.430)) - 0.0035) - 0.0020, w) * front * (1.0 - wing);
 		col = mix(col, blue_hi * 1.15, wing2 * 0.7);
 		hh += wing * 0.0016 + wing2 * 0.0008;
+		// Steppnähte der Brustplatten (zwei Reihen) und Mittelfurche
+		float chest_zone = front * (1.0 - smoothstep(0.15, 0.17, ax)) * smoothstep(1.33, 1.36, y) * (1.0 - smoothstep(1.47, 1.5, y));
+		float q1 = cs_stitch(y - (1.455 - 0.30 * ax), p.x, w) * chest_zone;
+		col = mix(col, navy * 0.8, q1 * 0.5);
+		float mid_gr = gs(ax, 0.0042) * front * smoothstep(1.30, 1.34, y) * (1.0 - smoothstep(1.40, 1.44, y));
+		ao *= 1.0 - 0.30 * mid_gr;
+		col *= 1.0 - 0.18 * mid_gr;
 
 		// Stern (grauweiss, mit Rahmen und Facetten)
 		vec2 sq = p.xy - vec2(0.0, 1.388);
@@ -180,22 +249,44 @@ void cap(vec3 p, float w, out vec3 col, out float met, out float rou, out vec3 e
 			vec3 oc = mix(white, red, edge_r * (1.0 - outer_w));
 			sc = mix(sc, oc, outside * step(0.5, ow));
 			float painted = zone * (1.0 - outside * (1.0 - ow));
-			col = mix(col, sc * (0.92 + 0.14 * mott + 0.5 * cl * 0.2), painted);
-			rou = mix(rou, 0.78, painted);
+			// Bauchmuskel-Segmente: weisse Streifen in Wülste (Querfurchen) geteilt
+			float seg_y = 0.5 + 0.5 * sin((y - 1.115) / 0.058 * 6.2831853);
+			float segm = smoothstep(0.15, 0.55, seg_y);
+			vec3 scc = sc * (0.92 + 0.14 * mott + 0.5 * cl * 0.2);
+			scc *= mix(1.0, 0.80 + 0.28 * segm, 1.0 - max(red_o, ctr) * 0.6);
+			col = mix(col, scc, painted);
+			rou = mix(rou, 0.76, painted);
 			// Polster-Relief: weisse Flächen leicht erhaben, Ränder fangen Licht
 			float white_a = painted * (1.0 - max(red_o, ctr));
-			hh += white_a * 0.0028 + painted * 0.0010;
+			hh += white_a * (0.0022 + 0.0016 * segm) + painted * 0.0010;
+			ao *= 1.0 - 0.22 * white_a * (1.0 - segm);
 			// Kerbe zwischen den Flächen (dunkle feine Linie)
 			float gap = max(cov(abs(abs(ax - xr) - hw) - 0.0007, w), cov(abs(length(vec2(p.x, y - 1.154)) - 0.021) - 0.0007, w) * step(y, 1.154)) * zone;
 			col = mix(col, navy * 0.6, gap * 0.55);
+			ao *= 1.0 - 0.25 * gap;
 		}
-		// Bauch-Seiten unter den Streifen etwas heller
+		// Seitennähte (Steppung) unter der Brust und Rippen an der Flanke
+		float flank = (1.0 - front * 0.0) * smoothstep(0.125, 0.135, ax) * smoothstep(1.10, 1.14, y) * (1.0 - smoothstep(1.30, 1.34, y));
+		float fs1 = cs_stitch(ax - 0.168 + 0.20 * (y - 1.2), y, w) * flank;
+		col = mix(col, navy * 0.7, fs1 * 0.5);
+		float fr = cs_fold(y, p.z * 0.8, 17.0, 0.5, 0.4);
+		col *= 1.0 - 0.14 * flank * (1.0 - fr);
+		hh += flank * (fr - 0.5) * 0.0014;
 		// Rücken: Mittelnaht, Schulterblatt-Nähte, Kreuzgurte
 		float bk = back;
 		float cseam = cs_stitch(p.x, y, w) * smoothstep(1.11, 1.15, y) * (1.0 - smoothstep(1.44, 1.47, y));
 		col = mix(col, navy, cseam * 0.5 * bk);
+		hh -= ln(p.x, 0.0, 0.0012, w) * bk * smoothstep(1.11, 1.15, y) * (1.0 - smoothstep(1.44, 1.47, y)) * 0.0014;
 		float yoke = cs_stitch(y - 1.435 + 0.35 * ax * ax * 2.0, p.x, w) * (1.0 - smoothstep(0.15, 0.17, ax));
 		col = mix(col, navy, yoke * 0.5 * bk);
+		// Rücken: Schulterblatt-Platten (leicht dunkler abgesetzt), Lendenpartie
+		float blade = bk * smoothstep(0.02, 0.05, ax) * (1.0 - smoothstep(0.14, 0.17, ax)) * smoothstep(1.30, 1.34, y) * (1.0 - smoothstep(1.43, 1.45, y));
+		col = mix(col, blue * 0.82, blade * 0.40);
+		float lum = bk * smoothstep(1.08, 1.12, y) * (1.0 - smoothstep(1.17, 1.21, y));
+		col = mix(col, navy * 1.1, lum * 0.50);
+		float lf = cs_fold(y, p.x, 36.0, 1.0, 5.2);
+		col *= 1.0 - 0.14 * lum * (1.0 - lf);
+		ao *= 1.0 - 0.30 * lum * (1.0 - lf);
 
 		// Gurte (grau, Gurtband): vorn senkrecht über die Brust, hinten als X
 		float fs = smoothstep(-0.075, -0.02, p.z);
@@ -217,6 +308,9 @@ void cap(vec3 p, float w, out vec3 col, out float met, out float rou, out vec3 e
 		col = mix(col, navy * 0.6, st_edge * 0.55);
 		// der obere Gurt liegt über dem unteren (Schatten an der Kreuzung)
 		col *= 1.0 - 0.35 * gs(s2, 0.004) * b1 * (1.0 - b2);
+		// Gurte werfen einen schmalen Schatten auf den Anzug
+		ao *= 1.0 - 0.30 * gs(max(f_sd, 0.0), 0.0035) * fs * (1.0 - f_cov);
+		ao *= 1.0 - 0.30 * gs(max(min(s1, s2), 0.0), 0.0035) * bs * (1.0 - sb);
 		hh += st_cov * 0.0030;
 		// Schnalle vorn
 		float bkl = cov(box2(vec2(ax - 0.1335, y - 1.463), vec2(0.0165, 0.0125)), w) * fs * (1.0 - bs);
@@ -230,15 +324,19 @@ void cap(vec3 p, float w, out vec3 col, out float met, out float rou, out vec3 e
 		// Gürtel rundum (Leder), Schnalle und Taschen sind Zusatzteile (captain_suit.gd)
 		if (y > 1.040 && y < 1.102) {
 			float bz = cov(abs(y - 1.0715) - 0.0285, w);
-			vec3 lc = leather_hi * (0.55 + 0.35 * cs_vn3(p * 300.0)) * 0.85;
-			col = mix(col, lc * 0.8, bz);
+			vec3 lc = cs_leather(leather_hi, p, w) * 0.80;
+			col = mix(col, lc, bz);
 			rou = mix(rou, 0.55, bz);
 			float bst = max(cs_stitch(y - 1.0955, p.x + p.z, w), cs_stitch(y - 1.0475, p.x + p.z, w));
 			col = mix(col, lin(vec3(0.5, 0.38, 0.3)), bst * 0.6 * bz);
 			hh += bz * 0.0020;
 		}
-		// Verwitterung: Falten und Abrieb am Bauch
+		// Gewebe, Körnung, Verwitterung: Falten und Abrieb am Bauch, Staub, Ruß
+		col *= 1.0 + 0.08 * cl * (1.0 - st_cov) + 0.08 * grain * near_f;
+		hh += cl * 0.00014 * near_f * (1.0 - st_cov);
 		col *= 1.0 - 0.16 * smoothstep(0.55, 0.9, grime) * (1.0 - front * 0.4);
+		col = mix(col, soot, 0.30 * smoothstep(0.62, 0.92, cs_vn3(p * vec3(13.0, 9.0, 13.0) + 2.0)) * (1.0 - smoothstep(1.2, 1.4, y)));
+		col = mix(col, dust, 0.20 * smoothstep(0.5, 0.9, cs_vn3(p * 17.0 + 11.0)) * (1.0 - smoothstep(1.05, 1.3, y)));
 	}
 
 	// ------------------------------------------------ Arme
@@ -246,46 +344,98 @@ void cap(vec3 p, float w, out vec3 col, out float met, out float rou, out vec3 e
 		// Schulter blau, Oberarm grau (Ärmel), Ellbogen, Stulpe, Handschuh
 		float sl = smoothstep(0.30, 0.355, ax);
 		col = mix(blue, gray, sl);
-		col *= 1.0 + 0.16 * (mott - 0.5) + 0.30 * cl;
+		col *= 1.0 + 0.10 * (mott - 0.5) + 0.20 * cl;
 		col = mix(col, navy, ln(ax, 0.292, 0.003, w) * 0.7);
-		// Ärmelnähte
+		// Ärmelnähte: Längsnaht oben und unten, Ring um den Bizeps, Ellbogen-Ring
+		float armc = (p.y - 1.436) + 0.5 * (p.z + 0.062);
 		col = mix(col, navy, cs_stitch(ax - 0.375, p.z * 1.0, w) * 0.45 * sl);
-		// Ellbogen: Falten, dunkler Rand zum Stulpen
+		float sl_s = (1.0 - smoothstep(0.455, 0.49, ax)) * smoothstep(0.31, 0.35, ax);
+		float seam_t = cs_stitch(p.z + 0.062 + 0.012, p.x, w) * sl_s;
+		col = mix(col, gray * 0.55, seam_t * 0.45);
+		float seam_b = cs_stitch(p.z + 0.062 - 0.012, p.x, w) * sl_s;
+		col = mix(col, gray * 0.55, seam_b * 0.40);
+		hh -= ln(p.z + 0.062 + 0.012, 0.0, 0.0011, w) * sl_s * 0.0012;
+		// Ellbogen: Falten (Innenseite vorn), dunkler Rand zum Stulpen
 		float eb = smoothstep(0.43, 0.46, ax) * (1.0 - smoothstep(0.49, 0.50, ax));
 		col = mix(col, gray * 0.62, eb * 0.55);
-		float fold = smoothstep(0.6, 0.9, cs_vn3(vec3(p.x * 60.0, p.y * 10.0, p.z * 10.0))) * smoothstep(0.40, 0.46, ax) * (1.0 - smoothstep(0.50, 0.53, ax));
-		col *= 1.0 - 0.25 * fold;
-		// Verwitterung: Staub am Ellbogen, fleckiger Stoff
-		col = mix(col, dust, 0.25 * sl * smoothstep(0.55, 0.9, grime));
+		float ef = cs_fold(ax, p.y * 1.0 + p.z, 78.0, 1.1, 0.7);
+		float ez = smoothstep(0.405, 0.44, ax) * (1.0 - smoothstep(0.50, 0.54, ax)) * smoothstep(-0.075, -0.03, p.z);
+		col *= 1.0 - 0.26 * ez * (1.0 - ef);
+		hh += ez * (ef - 0.5) * 0.0030;
+		ao *= 1.0 - 0.45 * ez * (1.0 - ef);
+		// Falten am Oberarm (quer zum Arm, bei Bewegung gestaucht), Achsel
+		float uf = cs_fold(ax, p.y + p.z, 40.0, 1.4, 3.3);
+		float uz = smoothstep(0.31, 0.36, ax) * (1.0 - smoothstep(0.40, 0.44, ax));
+		col *= 1.0 - 0.10 * uz * (1.0 - uf);
+		hh += uz * (uf - 0.5) * 0.0016;
+		// Bizeps/Trizeps: Schatten der Furche zwischen den Muskelbäuchen (unten am Arm)
+		float groove = gs(p.y - 1.395, 0.012) * smoothstep(0.30, 0.34, ax) * (1.0 - smoothstep(0.44, 0.48, ax));
+		col *= 1.0 - 0.18 * groove;
+		ao *= 1.0 - 0.25 * groove;
+		// Verwitterung: Staub und Ruß, fleckiger Stoff
+		col = mix(col, gray * 0.7, 0.22 * sl * smoothstep(0.55, 0.9, grime));
+		col = mix(col, soot, 0.20 * sl * smoothstep(0.66, 0.92, cs_vn3(p * 14.0 + 5.0)));
+		col *= 1.0 + 0.06 * grain * near_f;
+		hh += cl * 0.00014 * near_f;
 		// Stulpe (Leder) unter den Zusatzteilen
 		float gl = smoothstep(0.497, 0.503, ax);
-		col = mix(col, leather * (0.8 + 0.4 * mott), gl);
-		// Hand: Handschuh, dunkel
+		col = mix(col, cs_leather(leather, p, w), gl);
+		// Hand: Lederhandschuh (dunkel), Naht, Knöchel, Fingerglieder
 		float hd = smoothstep(0.732, 0.742, ax);
-		col = mix(col, glove * (0.8 + 0.5 * cs_vn3(p * 260.0)), hd);
-		// Knöchel-Naht und Daumenansatz
+		vec3 gcol = cs_leather(glove, p, w);
+		// Rücken (y hoch) und Handfläche (y tief): Handfläche etwas heller (abgegriffen)
+		float palm = 1.0 - smoothstep(1.43, 1.44, y);
+		gcol = mix(gcol, cs_leather(leather_hi * 0.8, p, w), palm * 0.55);
+		// Fingerrillen (zwischen den Fingern) und Fingerglied-Falten quer
+		float fz = (p.z + 0.062) / 0.0235 + 0.5;   // Fingerindex (Mitte = ganzzahlig + 0.5)
+		float fsep = gs(fract(fz) - 0.0, 0.07) * smoothstep(0.86, 0.88, ax);
+		gcol *= 1.0 - 0.45 * fsep;
+		float j2 = mix(0.888, 0.902, smoothstep(-0.11, -0.06, p.z));
+		float j3 = j2 + mix(0.026, 0.034, smoothstep(-0.11, -0.06, p.z));
+		float jf = max(gs(ax - j2, 0.0016), gs(ax - j3, 0.0016)) * smoothstep(0.86, 0.88, ax) * (1.0 - smoothstep(0.96, 0.975, ax));
+		gcol *= 1.0 - 0.55 * jf;
+		ao *= 1.0 - 0.35 * jf - 0.25 * fsep;
+		hh -= jf * 0.0007;
+		// Knöchel und Fingerspitzen etwas abgewetzt
+		float kn_ = gs(ax - 0.862, 0.008) * (1.0 - palm);
+		gcol = mix(gcol, cs_leather(leather_hi, p, w), 0.45 * kn_);
+		float tip = smoothstep(0.945, 0.97, ax);
+		gcol = mix(gcol, cs_leather(leather_hi * 1.1, p, w), 0.35 * tip);
+		gcol *= 1.0 - 0.20 * smoothstep(0.55, 0.9, cs_vn3(p * 70.0));
+		col = mix(col, gcol, hd);
+		// Naht über dem Handrücken und Daumenansatz
 		col = mix(col, leather_hi * 0.8, cs_stitch(ax - 0.775, p.z, w) * hd * 0.6);
-		rou = mix(0.82, 0.55, gl);
+		col = mix(col, leather_hi * 0.8, cs_stitch(p.z + 0.062, p.x, w) * smoothstep(0.745, 0.80, ax) * (1.0 - smoothstep(0.84, 0.87, ax)) * hd * (1.0 - palm) * 0.45);
+		rou = mix(0.80, 0.52, max(gl, hd));
+		rim = mix(rim, 0.08, max(gl, hd));
 		hh += gl * 0.0010;
 	}
 
 	// ------------------------------------------------ Stiefel (Fuss; der Schaft ist ein Zusatzteil)
 	if (y < 0.37 && !arm) {
-		vec3 bc = lin(vec3(0.20, 0.125, 0.09)) * (0.75 + 0.5 * cs_vn3(p * 140.0));
+		vec3 bc = cs_leather(lin(vec3(0.21, 0.13, 0.095)), p, w);
 		float bm = 1.0 - smoothstep(0.355, 0.365, y);
 		col = mix(col, bc, bm);
-		rou = mix(rou, 0.6, bm);
+		rou = mix(rou, 0.58, bm);
+		rim = mix(rim, 0.10, bm);
 		// Schnürung auf dem Fussrücken (helle Querstriche)
 		float lace = step(0.5, fract(p.z / 0.016)) * cov(abs(ax - 0.092) - 0.011, w) * smoothstep(0.0, 0.03, p.z) * (1.0 - smoothstep(0.11, 0.13, p.z)) * smoothstep(0.06, 0.09, y);
 		col = mix(col, lin(vec3(0.50, 0.42, 0.34)), lace * 0.7);
-		// Kappe vorn dunkler, Sohle schwarz mit Rand
-		col = mix(col, bc * 0.62, smoothstep(0.12, 0.15, p.z) * (1.0 - smoothstep(0.04, 0.10, y)));
+		// Kappe vorn dunkler mit Naht, Sohle schwarz mit Rand
+		float toe = smoothstep(0.12, 0.15, p.z) * (1.0 - smoothstep(0.04, 0.10, y));
+		col = mix(col, bc * 0.62, toe);
+		col = mix(col, lin(vec3(0.5, 0.4, 0.32)), cs_stitch(p.z - 0.118 - 0.2 * abs(ax - 0.092), p.x, w) * (1.0 - smoothstep(0.075, 0.085, y)) * 0.5);
 		float sole = 1.0 - smoothstep(0.018, 0.026, y);
 		col = mix(col, lin(vec3(0.045, 0.04, 0.04)), sole);
 		col = mix(col, lin(vec3(0.42, 0.33, 0.25)), cov(abs(y - 0.0305) - 0.0016, w) * (1.0 - sole));
-		// Dreck
-		col = mix(col, dust, 0.45 * (1.0 - smoothstep(0.02, 0.2, y)) * (0.3 + 0.7 * grime));
+		// Knöchel-Falten an der Beuge, Dreck
+		float af = cs_fold(p.z, p.x, 60.0, 1.2, 1.1);
+		float az = 0.0;
+		col *= 1.0 - 0.2 * az * (1.0 - af);
+		col = mix(col, dust, 0.50 * (1.0 - smoothstep(0.02, 0.2, y)) * (0.3 + 0.7 * grime));
+		col = mix(col, dust * 0.8, 0.30 * smoothstep(0.55, 0.9, cs_vn3(p * 40.0)) * (1.0 - smoothstep(0.05, 0.3, y)));
 		hh += cov(abs(y - 0.0305) - 0.0016, w) * 0.001;
+		ao *= 1.0 - 0.5 * (1.0 - smoothstep(0.0, 0.03, y));
 	}
 
 	// ------------------------------------------------ Kopf: Haube mit Gesichtsöffnung
@@ -319,7 +469,7 @@ void cap(vec3 p, float w, out vec3 col, out float met, out float rou, out vec3 e
 		vec3 fcol = col;
 		float frou = rou;
 		vec3 femi = emi;
-		human_face(p, w, skin, lin(vec3(0.30, 0.48, 0.70)), lin(vec3(0.20, 0.12, 0.07)), lin(vec3(0.62, 0.30, 0.28)), op, fcol, frou, femi);
+		cap_face(p, w, skin, lin(vec3(0.30, 0.42, 0.56)), lin(vec3(0.15, 0.09, 0.055)), lin(vec3(0.60, 0.36, 0.34)), op, fcol, frou, femi);
 		col = fcol;
 		col *= mix(1.0, shade, op);
 		rou = frou;
@@ -346,4 +496,11 @@ void cap(vec3 p, float w, out vec3 col, out float met, out float rou, out vec3 e
 		col = mix(col, navy, 0.7);
 	}
 	hgt = hh;
+}
+
+// alte Schnittstelle (hero_suit.gdshader)
+void cap(vec3 p, float w, out vec3 col, out float met, out float rou, out vec3 emi, out float hgt) {
+	float ao;
+	float rim;
+	cap2(p, w, col, met, rou, emi, hgt, ao, rim);
 }

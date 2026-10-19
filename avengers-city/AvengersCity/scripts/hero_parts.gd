@@ -12,6 +12,7 @@ const IronFx = preload("res://scripts/iron_fx.gd")
 const ThorSuit = preload("res://scripts/thor_suit.gd")
 const IronSuit = preload("res://scripts/ironman_suit.gd")
 const CapSuit = preload("res://scripts/captain_suit.gd")
+const CapHands = preload("res://scripts/captain_hands.gd")
 
 const GOLD := Color(0.88, 0.58, 0.14)
 const RED := Color(0.66, 0.035, 0.05)
@@ -106,6 +107,7 @@ static func frame(y: Vector3, z: Vector3) -> Basis:
 static func cap(skel: Skeleton3D) -> void:
 	# Helm-Klappen, Kinnriemen, Kragen, Polster, Gürtel mit Taschen, Stulpen, Stiefel: captain_suit.gd
 	CapSuit.build(skel)
+	CapHands.build(skel)  # Hände, Finger, Handschuhe, Stulpen (captain_hands.gd)
 
 
 # ---------------------------------------------------------------- Iron Man
@@ -171,6 +173,23 @@ static func shield(parent: Node3D) -> Node3D:
 	rim.scale = Vector3(1, 0.9, 1)
 	rim.material_override = edge
 	root.add_child(rim)
+	# Wulst innen am Rand und flacher Randring auf der Rückseite (Kanten fangen Licht)
+	var bead := MeshInstance3D.new()
+	bead.mesh = m_torus(SHIELD_R - 0.030, SHIELD_R - 0.022)
+	bead.scale = Vector3(1, 0.6, 1)
+	bead.position = Vector3(0, -0.002, 0)
+	bead.material_override = edge
+	bead.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	root.add_child(bead)
+	for k in range(8):  # Nieten auf der Rückseite rund um die Nabe
+		var ar := TAU * float(k) / 8.0
+		var rv := MeshInstance3D.new()
+		rv.mesh = m_half(0.0075)
+		rv.rotation.x = PI
+		rv.position = Vector3(cos(ar) * 0.105, -0.012, sin(ar) * 0.105)
+		rv.material_override = edge
+		rv.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		root.add_child(rv)
 	# Rückseite: Nabe, breiter Armriemen (Ellbogenseite) und Griff (Handseite); Armachse = lokales z
 	var boss := MeshInstance3D.new()
 	boss.mesh = m_half(0.05)
@@ -200,6 +219,15 @@ static func shield(parent: Node3D) -> Node3D:
 		br.material_override = steel
 		br.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		root.add_child(br)
+	for sx in [-1.0, 1.0]:
+		for zz in [-0.125, -0.085]:
+			var rv2 := MeshInstance3D.new()
+			rv2.mesh = m_half(0.0055)
+			rv2.rotation.x = PI
+			rv2.position = Vector3(sx * 0.105, -0.028, zz)
+			rv2.material_override = edge
+			rv2.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			root.add_child(rv2)
 	var grip := MeshInstance3D.new()
 	grip.mesh = m_cyl(0.013, 0.013, 0.12)
 	grip.rotation.z = PI / 2

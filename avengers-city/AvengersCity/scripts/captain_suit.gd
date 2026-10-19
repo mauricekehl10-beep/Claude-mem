@@ -163,6 +163,54 @@ static func tube(r_top: float, r_bot: float, h: float, seg: int = 24, caps: bool
 	return _arrays(v, n, idx)
 
 
+# Gebogene Platte (Mantelstück eines Zylinders um die Achse y): Radius r, Länge h, Winkel a0..a1 (Bogenmass, 0 = +x),
+# Dicke th, flare = Radiuszunahme über die Länge. Aussen- und Innenfläche, Kanten geschlossen.
+static func shell(r: float, h: float, a0: float, a1: float, th: float, seg: int = 14, flare: float = 0.0) -> Array:
+	var v := PackedVector3Array()
+	var n := PackedVector3Array()
+	var idx := PackedInt32Array()
+	var hh := h * 0.5
+	for layer in range(4):
+		# 0 aussen, 1 innen, 2 Kante oben, 3 Kante unten
+		for i in range(seg + 1):
+			var a := lerpf(a0, a1, float(i) / float(seg))
+			var d := Vector3(cos(a), 0.0, sin(a))
+			for j in range(2):
+				var yy := -hh if j == 0 else hh
+				var rr := r + flare * (yy / h)
+				var p: Vector3
+				var nn: Vector3
+				if layer == 0:
+					p = d * (rr + th) + Vector3(0, yy, 0)
+					nn = d
+				elif layer == 1:
+					p = d * rr + Vector3(0, yy, 0)
+					nn = -d
+				elif layer == 2:
+					p = d * (rr + th * (0.0 if j == 0 else 1.0)) + Vector3(0, hh, 0)
+					nn = Vector3(0, 1, 0)
+				else:
+					p = d * (rr + th * (0.0 if j == 0 else 1.0)) + Vector3(0, -hh, 0)
+					nn = Vector3(0, -1, 0)
+				v.append(p)
+				n.append(nn)
+		var base := layer * (seg + 1) * 2
+		for i in range(seg):
+			var i0 := base + i * 2
+			idx.append_array(PackedInt32Array([i0, i0 + 1, i0 + 2, i0 + 1, i0 + 3, i0 + 2]))
+	# Seitenkanten (zwei Rechtecke an den Bogenenden)
+	for e in range(2):
+		var a := a0 if e == 0 else a1
+		var d := Vector3(cos(a), 0.0, sin(a))
+		var tn := Vector3(-d.z, 0.0, d.x) * (-1.0 if e == 0 else 1.0)
+		var base := v.size()
+		for k in [[0.0, -hh], [th, -hh], [th, hh], [0.0, hh]]:
+			v.append(d * (r + k[0]) + Vector3(0, k[1], 0))
+			n.append(tn)
+		idx.append_array(PackedInt32Array([base, base + 1, base + 2, base, base + 2, base + 3]))
+	return _arrays(v, n, idx)
+
+
 # Basis aus Achse (y) und grober zweiter Richtung (z)
 static func frame(y: Vector3, z: Vector3) -> Basis:
 	var by := y.normalized()
@@ -287,8 +335,8 @@ static func build(skel: Skeleton3D) -> void:
 	var hood := mat(2, Color(0.26, 0.37, 0.53), Color(0.40, 0.50, 0.62), 0.5)
 	var hood_hi := mat(4, Color(0.31, 0.42, 0.58), Color(0.46, 0.55, 0.66), 0.6)
 	var collar := mat(2, Color(0.16, 0.25, 0.42), Color(0.30, 0.38, 0.52), 0.6)
-	var pad := mat(4, Color(0.27, 0.25, 0.25), Color(0.44, 0.41, 0.39), 0.7)
-	var pad2 := mat(4, Color(0.34, 0.31, 0.30), Color(0.50, 0.47, 0.44), 0.7)
+	var pad := mat(4, Color(0.26, 0.27, 0.30), Color(0.44, 0.45, 0.48), 0.7)
+	var pad2 := mat(4, Color(0.33, 0.34, 0.37), Color(0.50, 0.51, 0.54), 0.7)
 	var grayband := mat(3, Color(0.50, 0.50, 0.52), Color(0.62, 0.62, 0.62), 0.5)
 	var boot := mat(0, Color(0.22, 0.135, 0.095), Color(0.42, 0.30, 0.22), 0.9)
 	var boot_hi := mat(0, Color(0.31, 0.19, 0.13), Color(0.48, 0.34, 0.25), 0.8)
@@ -332,15 +380,21 @@ static func build(skel: Skeleton3D) -> void:
 	g.add(N, tube(0.056, 0.082, 0.062, 28, false), collar, Transform3D(tilt * Basis.from_scale(Vector3(1.0, 1.0, 0.96)), Vector3(0, 1.522, -0.036)))
 	g.add(N, tube(0.0585, 0.0585, 0.012, 28, false), hood_hi, Transform3D(tilt * Basis.from_scale(Vector3(1.0, 1.0, 0.96)), Vector3(0, 1.557, -0.026)))
 
-	# --- Schulterpolster: drei Platten, die die Schulter nach aussen überlappen
+	# --- Schulterpanzer: vier überlappende, gerippte Lamellen auf dem Deltamuskel (aussen/oben), Nieten, Gurtband
 	for s in [-1.0, 1.0]:
 		var b := "mixamorig_LeftArm" if s > 0.0 else "mixamorig_RightArm"
-		var ar := frame(Vector3(0, 1, 0), Vector3(s, 0, 0))
-		var plates := [[0.238, Vector3(0.082, 0.090, 0.098), pad2, 0.0], [0.300, Vector3(0.062, 0.080, 0.094), pad, 0.0], [0.352, Vector3(0.046, 0.074, 0.092), pad2, 0.0]]
-		for p in plates:
-			g.add(b, dome(24), p[2], Transform3D(Basis.from_scale(p[1]), Vector3(s * (p[0] as float), 1.438, -0.062)))
-		# Gurtkante quer über das Polster
-		g.add(b, tube(0.097, 0.097, 0.014, 24, false), strap_l, Transform3D(frame(Vector3(s, 0, 0), Vector3(0, 0, 1)) * Basis.from_scale(Vector3(1.0, 1.0, 1.0)), Vector3(s * 0.276, 1.438, -0.062)))
+		var bas := Basis(Vector3(0, 1, 0), Vector3(s, 0, 0), Vector3(0, 0, -s))
+		var lam := [[0.246, 0.090, 0.062], [0.294, 0.082, 0.058], [0.340, 0.074, 0.054], [0.384, 0.069, 0.050]]
+		for i in range(4):
+			var L: Array = lam[i]
+			var c := Vector3(s * (L[0] as float), 1.436, -0.062)
+			g.add(b, shell(L[1], L[2], -1.78, 1.78, 0.0075, 18, 0.004), pad2 if i % 2 == 0 else pad, Transform3D(bas, c))
+			# Nietenköpfe am Rand jeder Lamelle (zum Ellbogen hin)
+			for k in [-0.8, 0.0, 0.8]:
+				var off := Vector3(0, cos(float(k)), sin(float(k))) * ((L[1] as float) + 0.0085)
+				g.add(b, sphere(8), silver, Transform3D(Basis.from_scale(Vector3(0.0030, 0.0030, 0.0030)), c + off + Vector3(s * ((L[2] as float) * 0.5 - 0.008), 0, 0)))
+		# Gurt über der Schulter: Lederband quer um den Oberarm bei der zweiten Lamelle
+		g.add(b, shell(0.0905, 0.012, -1.78, 1.78, 0.0035, 18), strap_l, Transform3D(bas, Vector3(s * 0.318, 1.436, -0.062)))
 
 	# --- Stulpen (Handschuh-Schäfte) am Unterarm
 	for s in [-1.0, 1.0]:
@@ -359,9 +413,6 @@ static func build(skel: Skeleton3D) -> void:
 			g.add(b, box(Vector3(0.012, 0.012, 0.016)), silver, Transform3D(ba, c + Vector3(s * ax, 0.054, 0.0)))
 		# Rand am Handgelenk
 		g.add(b, tube(0.050, 0.050, 0.010, 24, false), leather2, Transform3D(ba, c + Vector3(s * 0.728, 0, 0)))
-		# Handrücken-Schutz
-		var hb := "mixamorig_LeftHand" if s > 0.0 else "mixamorig_RightHand"
-		g.add(hb, box(Vector3(0.058, 0.012, 0.078)), black, Transform3D(Basis.IDENTITY, Vector3(s * 0.815, 1.466, -0.062)))
 
 	# --- Gürtel: breiter Lederriemen mit Schnalle, zwei Taschen vorn, eine hinten
 	g.add(Hp, tube(1.0, 1.0, 0.056, 40, false), leather, Transform3D(Basis.from_scale(Vector3(0.186, 1.0, 0.158)), Vector3(0, 1.072, -0.006)))
@@ -403,6 +454,32 @@ static func build(skel: Skeleton3D) -> void:
 		# Schienen aussen und innen
 		g.add(b, box(Vector3(0.010, 0.250, 0.016)), gun, Transform3D(Basis.IDENTITY, Vector3(cx + s * 0.066, 0.235, -0.040)))
 		g.add(b, box(Vector3(0.010, 0.250, 0.016)), gun, Transform3D(Basis.IDENTITY, Vector3(cx - s * 0.066, 0.235, -0.040)))
-		# Schnürung vorn
-		g.add(b, box(Vector3(0.030, 0.200, 0.006)), black, Transform3D(Basis.from_euler(Vector3(-0.10, 0, 0)), Vector3(cx, 0.255, 0.034)))
+		# Schnürung vorn: Zunge, Ösen beidseits, überkreuzte Schnürsenkel
+		g.add(b, box(Vector3(0.046, 0.215, 0.004)), black, Transform3D(Basis.from_euler(Vector3(-0.09, 0, 0)), Vector3(cx, 0.255, 0.0365)))
+		for k in range(8):
+			var yy := 0.152 + 0.027 * k
+			var zz := 0.0405 - 0.0026 * (yy - 0.152)
+			for e in [-1.0, 1.0]:
+				g.add(b, tube(0.0042, 0.0042, 0.003, 10, false), silver, Transform3D(frame(Vector3(0, 0, 1), Vector3(0, 1, 0)), Vector3(cx + e * 0.0185, yy, zz)))
+			if k < 7:
+				for dd in [-1.0, 1.0]:
+					g.add(b, box(Vector3(0.0420, 0.0026, 0.0032)), strap_l, Transform3D(Basis.from_euler(Vector3(-0.09, 0, dd * 0.60)), Vector3(cx, yy + 0.0135, zz + 0.0012)))
+
+	# --- Details: Druckknöpfe an den Taschen, Nieten am Gürtel, Nieten und Rand an den Ohrenklappen
+	for s in [-1.0, 1.0]:
+		var rot := Basis.from_euler(Vector3(0, s * 0.62, 0))
+		var o := Vector3(s * 0.138, 1.082, 0.082)
+		for yy in [0.040, -0.034]:
+			g.add(Hp, sphere(10), silver, Transform3D(rot * Basis.from_scale(Vector3(0.0045, 0.0045, 0.0030)), o + rot * Vector3(0, yy, 0.0255)))
+		# Laschen der Tasche (Riemen mit Naht) und Gürtelnieten
+		for k in range(4):
+			var a := 0.30 + 0.17 * k
+			var q := Vector3(sin(a) * 0.1865 * s, 1.0715, cos(a) * 0.158 - 0.006)
+			g.add(Hp, sphere(8), silver, Transform3D(Basis.from_scale(Vector3(0.0032, 0.0032, 0.0022)), q * Vector3(1.0, 1.0, 1.0) + Vector3(0, 0.0, 0.0)))
+		# Ohrenklappe: Nietenreihe und Randwulst
+		for k in [20.0, 60.0, 100.0, 140.0, 180.0]:
+			var ar := deg_to_rad(k)
+			g.add(H, sphere(8), silver, Transform3D(Basis.from_scale(Vector3(0.0028, 0.0028, 0.0028)),
+				Vector3(s * 0.1010, 1.655 + 0.037 * sin(ar), -0.004 + 0.031 * cos(ar) * -1.0)))
+		g.add(H, tube(0.0475, 0.0475, 0.004, 24, false), hood, Transform3D(frame(Vector3(s, 0, 0), Vector3(0, 0, 1)) * Basis.from_scale(Vector3(0.95, 1.0, 1.08)), Vector3(s * 0.1005, 1.655, -0.004)))
 	g.finish()

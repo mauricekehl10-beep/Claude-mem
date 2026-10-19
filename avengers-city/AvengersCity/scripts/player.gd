@@ -914,11 +914,11 @@ func build_mixamo(h: Dictionary) -> void:
 		mx_anim.mixer_applied.connect(st.apply)  # Pose läuft direkt nach der Animation (nach dem Arm-Posing)
 	elif hero == 1:
 		# Repulsor in der Handfläche (Knochen: +Y zu den Fingern, +Z aus der Handfläche)
-		rep_mat = U.glow(Color(0.6, 0.95, 1.0), 1.0)
+		rep_mat = U.glow(Color(1.0, 0.82, 0.55), 1.0)  # warm-weiss, passend zu den roten Düsen
 		U.sphere(mx["rhand"], 0.03, Vector3(0, 0.065, 0.04), rep_mat).scale = Vector3(1, 1, 0.5)
 		U.sphere(mx["lhand"], 0.03, Vector3(0, 0.065, 0.04), rep_mat).scale = Vector3(1, 1, 0.5)  # beim Schweben leuchten beide Handflächen
 		rep_light = OmniLight3D.new()
-		rep_light.light_color = Color(0.6, 0.95, 1.0)
+		rep_light.light_color = Color(1.0, 0.6, 0.3)
 		rep_light.omni_range = 4.0
 		rep_light.light_energy = 0.0
 		rep_light.position = Vector3(0, 0.1, 0.1)
@@ -944,9 +944,9 @@ func update_arm(delta: float) -> void:
 			aim.palm = true
 		var glow := flash + w * 0.4 + (0.8 if flying else 0.0)  # Repulsoren leuchten im Flug
 		if rep_mat:
-			rep_mat.emission_energy_multiplier = 0.6 + glow * 3.0
+			rep_mat.emission_energy_multiplier = 0.5 + glow * 1.5
 		if rep_light:
-			rep_light.light_energy = glow * 0.8
+			rep_light.light_energy = glow * 0.5
 	elif atk == "bolt" or atk == "swing":  # Captains Wurf macht shield_throw.gd
 		var pose := arm_timeline(atk, atk_t)
 		w = pose["w"]

@@ -1,0 +1,6 @@
+UNFERTIGE STAENDE (nicht im Spiel, nicht getestet!)
+Diese Ordner enthalten die Dateien, die drei Helfer geaendert oder neu angelegt haben, bevor sie gestoppt wurden:
+ - flugsteuerung_iron : neue Iron-Man-Flugsteuerung (z3)
+ - thor_details       : Thor viel detaillierter (z5)
+ - autos              : realistischere Autos (z6)
+Basis war der Stand vor Commit "Captain America viel detaillierter". Zum Weitermachen die Helfer fortsetzen oder die Dateien in scripts/ zusammenfuehren.
